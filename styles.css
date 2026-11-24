@@ -178,8 +178,8 @@ table.dt thead th { background: var(--navy); color: #fff; font-weight: 600; }
 .ev-grid.multi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ev-grid.multi .ev-img { aspect-ratio: 4 / 3; object-fit: cover; }
 .ev-grid:not(.multi) .ev-img { aspect-ratio: auto; }
-/* الصورة المنفردة: بعرض البطاقة وارتفاع نصف صفحة A4 تقريبًا. تظهر كاملة دون قص ودون تشويه. صفحات PDF تبقى بحجمها الكامل. */
-.ev-grid:not(.multi) .ev-img:not(.page) { width: 100%; height: 115mm; object-fit: contain; background: #F3F6F8; }
+/* الصورة المنفردة: بعرض البطاقة وارتفاع نصف صفحة A4 تقريبًا، تملأ المربع (قد يُقص جزء من الأطراف) مع التركيز على الوسط. صفحات PDF تبقى بحجمها الكامل. */
+.ev-grid:not(.multi) .ev-img:not(.page) { width: 100%; height: 115mm; object-fit: cover; object-position: center; }
 .ev-grid .ev-img.page { aspect-ratio: 210 / 297; object-fit: contain; background: #fff; }
 .ev-page { font-size: 12px; color: #5b6b75; }
 .ev-grid .ev-card { min-width: 0; }
