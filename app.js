@@ -752,8 +752,8 @@ function evidenceHTML(f, imgs) {
       if (pdf && pdf.pages.length) {
         pdf.pages.forEach(function (src, i) {
           var note = pdf.total > 1 ? 'صفحة ' + d(i + 1) + ' من ' + d(pdf.total) : '';
-          cards.push('<div class="ev-card">' + head(note) + (i === 0 ? desc : '') +
-            '<img class="ev-img page" src="' + src + '" alt="' + esc(x.title) + '"></div>');
+          cards.push({ pdf: true, html: '<div class="ev-card ev-pdf">' + head(note) + (i === 0 ? desc : '') +
+            '<img class="ev-img page" src="' + src + '" alt="' + esc(x.title) + '"></div>' });
         });
         return;
       }
@@ -761,17 +761,31 @@ function evidenceHTML(f, imgs) {
       var body = src
         ? '<img class="ev-img" src="' + src + '" alt="' + esc(x.title) + '">'
         : '<div class="ev-file">مرفق: ' + esc(x.fileName) + ' (' + fmtSize(x.size) + ')</div>';
-      cards.push('<div class="ev-card">' + head('') + desc + body + '</div>');
+      cards.push({ pdf: false, html: '<div class="ev-card">' + head('') + desc + body + '</div>' });
     });
-    var items = cards.length
-      ? '<div class="ev-grid' + (cards.length > 1 ? ' multi' : '') + '">' + cards.join('') + '</div>'
-      : '';
+    // صفوف لا تنقسم بين صفحتين عند الطباعة: كل صفحة PDF في صف، والصور والملفات الأخرى اثنتين في كل صف.
+    var rows = [], pair = [];
+    var flush = function () {
+      if (pair.length) rows.push('<div class="ev-row pair">' + pair.join('') + '</div>');
+      pair = [];
+    };
+    cards.forEach(function (c) {
+      if (c.pdf) { flush(); rows.push('<div class="ev-row">' + c.html + '</div>'); return; }
+      pair.push(c.html);
+      if (pair.length === 2) flush();
+    });
+    flush();
+    if (cards.length === 1 && !cards[0].pdf) rows = ['<div class="ev-row">' + cards[0].html + '</div>'];
+    var gridOpen = '<div class="ev-grid' + (cards.length > 1 ? ' multi' : '') + '">';
     var qr = imgs['qr:' + el.no]
       ? '<div class="doc-qr"><img src="' + imgs['qr:' + el.no] + '" alt=""><span>امسح لعرض كل الشواهد</span></div>'
       : '';
-    return '<div class="doc-el"><div class="doc-el-head"><span class="doc-el-no">' + d(el.no) + '</span>' +
-      '<h4>' + esc(el.name) + '</h4><span class="muted">الوزن ' + d(el.weight) + '٪</span></div>' +
-      qr + (items || '<p class="doc-none">لا توجد شواهد لهذا العنصر.</p>') + '</div>';
+    var head = '<div class="doc-el-head"><span class="doc-el-no">' + d(el.no) + '</span>' +
+      '<h4>' + esc(el.name) + '</h4><span class="muted">الوزن ' + d(el.weight) + '٪</span></div>';
+    // عنوان العنصر مع أول صف من شواهده في كتلة واحدة، حتى لا يبقى العنوان وحده في أسفل الصفحة.
+    var first = rows.length ? gridOpen + rows[0] + '</div>' : '<p class="doc-none">لا توجد شواهد لهذا العنصر.</p>';
+    var rest = rows.length > 1 ? gridOpen + rows.slice(1).join('') + '</div>' : '';
+    return '<div class="doc-el"><div class="ev-keep">' + head + qr + first + '</div>' + rest + '</div>';
   }).join('');
 }
 

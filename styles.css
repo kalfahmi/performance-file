@@ -83,7 +83,7 @@ td { padding: 12px 14px; border-bottom: 1px solid #EEF2F5; vertical-align: middl
 .print-table { font-size: 11pt; }
 .cover { gap: 4px; }
 .busy { opacity: .6; pointer-events: none; }
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
   .pad { padding-left: 16px; padding-right: 16px; }
   .topbar { padding-left: 16px; padding-right: 16px; }
   .stats { grid-template-columns: 1fr; }
@@ -144,7 +144,7 @@ table.dt thead th { background: var(--navy); color: #fff; font-weight: 600; }
 .sig-empty { border-bottom: 1px dashed #C5D2DA; }
 .doc-foot { margin-top: auto; width: 100%; aspect-ratio: 1696 / 208; background-size: 100% 100%; background-repeat: no-repeat; }
 
-@media (max-width: 720px) {
+@media screen and (max-width: 720px) {
   .pform, .img-grid { grid-template-columns: 1fr; }
   .doc-title { padding: 12px 14px 4px; }
   .doc-title h1 { font-size: 18px; }
@@ -153,7 +153,9 @@ table.dt thead th { background: var(--navy); color: #fff; font-weight: 600; }
 }
 
 @media print {
-  @page { size: A4; margin: 0; }
+  /* هامش علوي وسفلي للصفحات التالية، والصفحة الأولى بلا هامش علوي لتبقى الترويسة ملاصقة لأعلى الورقة. */
+  @page { size: A4; margin: 12mm 0; }
+  @page :first { margin-top: 0; margin-bottom: 0; }
   body { background: #fff; }
   .no-print { display: none !important; }
   body * { visibility: hidden; }
@@ -161,11 +163,25 @@ table.dt thead th { background: var(--navy); color: #fff; font-weight: 600; }
   #print-area { position: absolute; inset: 0; width: 100%; min-height: 0; box-shadow: none; }
   .doc-wrap { padding: 0; overflow: visible; }
   table.dt thead th, .doc-head, .doc-foot { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  /* تخطيط كتلي في الطباعة حتى يحترم المتصفح منع الفصل بين عنوان العنصر وأول شاهد. */
+  .doc-ev-sec, .doc-el { display: block; }
+  .doc-ev-sec > h3 { margin-bottom: 10px; break-after: avoid; }
+  .doc-el { margin-bottom: 12px; }
+  .doc-el-head, .doc-qr { break-after: avoid; }
+  .doc-el-head { margin-bottom: 8px; }
+  table.kv tr, table.dt tr { break-inside: avoid; }
+  /* كل صف شواهد كتلة لا تنقسم بين صفحتين، فلا ينفصل عنوان الشاهد عن صورته. */
+  .ev-grid { display: block; }
+  .ev-row, .ev-keep { break-inside: avoid; }
+  .ev-row { margin-bottom: 10px; }
+  .ev-keep { display: block; }
+  .ev-keep > .doc-qr { margin-bottom: 8px; }
 }
 
 /* ---------- الشواهد في المعاينة ---------- */
 .doc-ev-sec { gap: 14px; }
 .doc-el { display: flex; flex-direction: column; gap: 8px; padding-bottom: 6px; }
+.ev-keep { display: flex; flex-direction: column; gap: 8px; }
 .doc-el-head { display: flex; align-items: center; gap: 10px; border-bottom: 2px solid var(--line); padding-bottom: 6px; }
 .doc-el-no { width: 30px; height: 30px; border-radius: 8px; background: var(--navy); color: #fff; display: grid; place-items: center; font-weight: 700; flex: none; }
 .doc-el-head h4 { margin: 0; flex: 1; font-size: 15px; color: var(--navy); }
@@ -174,16 +190,18 @@ table.dt thead th { background: var(--navy); color: #fff; font-weight: 600; }
 .ev-meta { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
 .ev-img { width: 100%; height: auto; display: block; border-radius: 8px; border: 1px solid #E3EAEE; }
 .ev-file { background: var(--soft); padding: 8px 10px; border-radius: 8px; font-size: 13px; }
-.ev-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
-.ev-grid.multi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ev-grid { display: flex; flex-direction: column; gap: 10px; }
+.ev-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.ev-row.pair { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ev-grid.multi .ev-img { aspect-ratio: 4 / 3; object-fit: cover; }
 .ev-grid:not(.multi) .ev-img { aspect-ratio: auto; }
-/* الصورة المنفردة: بعرض البطاقة وارتفاع نصف صفحة A4 تقريبًا، تملأ المربع (قد يُقص جزء من الأطراف) مع التركيز على الوسط. صفحات PDF تبقى بحجمها الكامل. */
-.ev-grid:not(.multi) .ev-img:not(.page) { width: 100%; height: 115mm; object-fit: cover; object-position: center; }
-.ev-grid .ev-img.page { aspect-ratio: 210 / 297; object-fit: contain; background: #fff; }
+/* الصورة المنفردة: بعرض البطاقة، وارتفاع يجعل البطاقة نصف صفحة A4 فتتسع الصفحة لبطاقتين. تملأ المربع (قد يُقص من الأطراف). */
+.ev-grid:not(.multi) .ev-img:not(.page) { width: 100%; height: 95mm; object-fit: cover; object-position: center; }
+/* صفحة PDF: بأبعادها الأصلية (طولية أو عرضية) بعرض كامل، ولا تتجاوز صفحة واحدة. */
+.ev-grid .ev-img.page { width: auto; max-width: 100%; height: auto; max-height: 195mm; aspect-ratio: auto; margin: 0 auto; object-fit: contain; background: #fff; }
 .ev-page { font-size: 12px; color: #5b6b75; }
 .ev-grid .ev-card { min-width: 0; }
-@media (max-width: 720px) { .ev-grid.multi { grid-template-columns: 1fr; } }
+@media screen and (max-width: 720px) { .ev-row.pair { grid-template-columns: minmax(0, 1fr); } }
 
 /* ---------- رمز QR لمجلد الشواهد ونبذة الشاهد ---------- */
 .doc-qr { display: flex; align-items: center; gap: 12px; margin: 6px 0 10px; }
