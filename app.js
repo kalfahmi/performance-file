@@ -1076,7 +1076,83 @@ function renderBackup() {
     '<div class="page-head"><h2>النسخ الاحتياطي</h2></div>' +
     '<section class="card"><h3>تنزيل نسخة احتياطية</h3>' +
     '<p class="muted" style="margin:0">تشمل النسخة: ' + who + '، من بيانات الملف والتقديرات وسجلات الشواهد. لا تحتوي كلمات المرور. ملفات الشواهد نفسها محفوظة في مخزن ملفات النظام، ويُذكر مسار كل ملف في النسخة.</p>' +
-    '<div><button class="btn primary" type="button" data-act="backup">تنزيل نسخة احتياطية (JSON)</button></div></section>';
+    '<div><button class="btn primary" type="button" data-act="backup">تنزيل نسخة احتياطية (JSON)</button></div></section>' +
+    (S.me.role === 'admin'
+      ? '<section class="card"><h3>استعادة من نسخة احتياطية</h3>' +
+        '<ul class="restore-rules">' +
+        '<li>تُضاف البيانات الناقصة فقط، ولا يُعدَّل الموجود ولا يُحذف. وفي بيانات الملفات تُملأ الحقول الفارغة فقط.</li>' +
+        '<li>الحساب المحذوف يُعاد باسمه واسم دخوله، وبكلمة مرور مؤقتة جديدة تظهر لك بعد الاستعادة.</li>' +
+        '<li>الشاهد والتوقيع لا يُعادان إلا إن كان ملفهما ما زال محفوظًا، لأن النسخة لا تحوي الملفات نفسها.</li>' +
+        '</ul>' +
+        '<form class="row" data-action="restore-read"><label>ملف النسخة الاحتياطية (backup-….json)<input name="file" type="file" accept=".json,application/json" required></label>' +
+        '<button class="btn primary" type="submit">قراءة الملف ومقارنته</button></form>' +
+        '<div id="restore-box"></div></section>'
+      : '');
+}
+
+/* ---------- الاستعادة (مسؤول النظام) ---------- */
+
+function renderRestorePlan(plan) {
+  var box = document.getElementById('restore-box');
+  if (!box) return;
+  S.restorePlan = plan;
+  var order = ['users', 'profiles', 'evidence', 'ratings', 'links', 'access', 'submissions', 'messages', 'grades'];
+  var totalMissing = order.reduce(function (n, t) { return n + (plan.tables[t] ? plan.tables[t].missing : 0); }, 0);
+  var rows = order.map(function (t) {
+    var x = plan.tables[t] || { total: 0, present: 0, missing: 0 };
+    return '<tr><td>' + esc(RESTORE_LABELS[t]) + '</td><td>' + d(x.total) + '</td><td>' + d(x.present) + '</td><td>' +
+      (x.note ? '<span class="muted">' + esc(x.note) + '</span>' : (x.missing ? '<strong>' + d(x.missing) + '</strong>' : '٠')) + '</td></tr>';
+  }).join('');
+  box.innerHTML =
+    '<div class="notice">' + (fmtDate(plan.exportedAt) ? 'نسخة بتاريخ ' + esc(fmtDate(plan.exportedAt)) + '. ' : '') + 'هذه مقارنة فقط، ولم يتغير شيء بعد.</div>' +
+    '<div class="table-wrap"><table><thead><tr><th>البيانات</th><th>في النسخة</th><th>موجود الآن</th><th>ناقص سيُستعاد</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    (plan.missingUsers.length ? '<p style="margin:0"><strong>حسابات ستُعاد:</strong> ' + plan.missingUsers.map(function (u) { return esc(u.name) + ' (<span dir="ltr">' + esc(u.username) + '</span>)'; }).join('، ') + '</p>' : '') +
+    (plan.relinked.length ? '<p class="muted" style="margin:0">حسابات أُعيد إنشاؤها سابقًا بالاسم نفسه للدخول، وستُربط بها بياناتها: ' + plan.relinked.map(function (u) { return esc(u.name); }).join('، ') + '</p>' : '') +
+    (totalMissing
+      ? '<div class="form-actions"><button class="btn primary" type="button" data-act="restore-apply">استعادة الناقص</button></div>'
+      : '<div class="notice">لا يوجد شيء ناقص: كل ما في النسخة موجود الآن.</div>');
+}
+
+function applyRestore() {
+  var plan = S.restorePlan;
+  if (!plan) return;
+  askConfirm('استعادة البيانات الناقصة من النسخة؟ لا يُعدَّل الموجود ولا يُحذف، والحسابات المعادة تأخذ كلمات مرور مؤقتة جديدة.', 'استعادة', function () {
+    closeModal();
+    var box = document.getElementById('restore-box');
+    box.innerHTML = '<div class="notice" id="restore-progress" aria-live="polite">جارٍ الاستعادة…</div>';
+    var progress = function (msg) { var el = document.getElementById('restore-progress'); if (el) el.textContent = msg; };
+    // مباشرة دون مهلة الثلاثين ثانية في call، فالاستعادة الكبيرة قد تطول.
+    return API.restoreApply(S.token, plan, progress).then(function (rep) {
+      S.restorePlan = null;
+      S.restoreReport = rep;
+      var order = ['profiles', 'evidence', 'ratings', 'links', 'access', 'submissions', 'messages', 'grades'];
+      var rows = '<tr><td>' + esc(RESTORE_LABELS.users) + '</td><td>' + d(rep.users.ok) + '</td><td>' + d(rep.users.failed) + '</td><td>٠</td></tr>' +
+        order.map(function (t) {
+          var x = rep.tables[t] || { ok: 0, failed: 0, skipped: 0 };
+          return '<tr><td>' + esc(RESTORE_LABELS[t]) + '</td><td>' + d(x.ok) + '</td><td>' + d(x.failed) + '</td><td>' + d(x.skipped) + '</td></tr>';
+        }).join('');
+      var pw = rep.passwords.length
+        ? '<h4 style="margin:12px 0 6px">كلمات المرور المؤقتة للحسابات المعادة</h4>' +
+          '<p class="muted" style="margin:0 0 6px">احفظها الآن، فلن تظهر مرة أخرى. سلّم كل شخص كلمته، ويغيّرها بعد دخوله من «تغيير كلمة المرور».</p>' +
+          '<div class="table-wrap"><table><thead><tr><th>الاسم</th><th>اسم الدخول</th><th>كلمة المرور المؤقتة</th></tr></thead><tbody>' +
+          rep.passwords.map(function (p) { return '<tr><td>' + esc(p.name) + '</td><td dir="ltr">' + esc(p.username) + '</td><td dir="ltr"><code>' + esc(p.password) + '</code></td></tr>'; }).join('') +
+          '</tbody></table></div><div class="form-actions"><button class="btn" type="button" data-act="restore-csv">تنزيل كلمات المرور (CSV)</button></div>'
+        : '';
+      box.innerHTML = '<div class="notice">اكتملت الاستعادة.</div>' +
+        '<div class="table-wrap"><table><thead><tr><th>البيانات</th><th>استُعيد</th><th>تعذّر</th><th>تُخطّي</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        '<p class="muted" style="margin:0">«تُخطّي»: شاهد ملفه غير محفوظ، أو سجل يخص حسابًا لم يُعَد.</p>' + pw;
+      toast('اكتملت الاستعادة.');
+    }).catch(handleErr);
+  });
+}
+
+function downloadRestorePasswords() {
+  var rep = S.restoreReport;
+  if (!rep || !rep.passwords.length) return;
+  var lines = [['الاسم', 'اسم الدخول', 'الصلاحية', 'كلمة المرور المؤقتة']].concat(rep.passwords.map(function (p) {
+    return [p.name, p.username, ROLE_LABEL[p.role] || p.role, p.password];
+  })).map(function (r) { return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(','); });
+  downloadBlob(new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }), 'restored-passwords.csv');
 }
 
 function downloadBackup() {
@@ -1315,6 +1391,8 @@ document.addEventListener('click', function (e) {
   if (a === 'pick-img') return pickImage(t.dataset.slot, t.dataset.id);
   if (a === 'sign') return openSignature(t.dataset.slot, t.dataset.id);
   if (a === 'note') return openNote(t.dataset.id, t.dataset.name);
+  if (a === 'restore-apply') return applyRestore();
+  if (a === 'restore-csv') return downloadRestorePasswords();
   if (a === 'del-msg') {
     var msgId = t.dataset.id, teacher = t.dataset.teacher, tname = t.dataset.name;
     return askConfirm('حذف هذه الرسالة نهائيًا؟ تختفي من حساب المعلم ومن سجل المدير.', 'حذف الرسالة', function () {
@@ -1482,6 +1560,21 @@ document.addEventListener('submit', function (e) {
       toast('تم حفظ بيانات الملف.');
       return loadProfileView();
     }).catch(handleErr);
+  }
+
+  if (action === 'restore-read') {
+    var bf = form.file.files[0];
+    if (!bf) return toast('اختر ملف النسخة أولًا.', 'err');
+    var rb = document.getElementById('restore-box');
+    if (rb) rb.innerHTML = '<div class="notice">جارٍ قراءة الملف ومقارنته…</div>';
+    return bf.text().then(function (txt) {
+      var json;
+      try { json = JSON.parse(txt); } catch (e) { throw new Error('الملف ليس ملف JSON صالحًا.'); }
+      return call('restoreAnalyze', [S.token, json]);
+    }).then(renderRestorePlan).catch(function (err) {
+      if (rb) rb.innerHTML = '';
+      handleErr(err);
+    });
   }
 
   if (action === 'note') {

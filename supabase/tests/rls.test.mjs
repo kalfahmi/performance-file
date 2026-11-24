@@ -210,6 +210,14 @@ await expect('المعلم لا يرى شواهد المدير', 'T1', `select c
 await expect('المدير يكتب مسؤوله المباشر واسمه', 'P', `update profiles set reviewer_title='مدير مكتب التعليم', principal_name='أ. المسؤول' where user_id='${U.P}'`, r => r.affected === 1);
 await expect('المعلم لا يرى مسؤول المدير', 'T1', `select count(*) n from profiles where user_id='${U.P}'`, count(0));
 
+// الاستعادة (migration 0008)
+await expect('مسؤول النظام يعيد رسالة باسم المدير', 'A', `insert into messages (id, from_id, to_id, body, created_at) values (gen_random_uuid(), '${U.P}','${U.T1}','مستعادة', now() - interval '1 day')`, r => !r.error);
+await expect('مسؤول النظام يعيد درجة باسم المدير', 'A', `insert into grades (teacher_id, grade, principal_id) values ('${U.T3}', 3.5, '${U.P}')`, r => !r.error);
+await expect('مسؤول النظام يعيد إرسال ملف', 'A', `insert into submissions (user_id) values ('${U.T2}')`, r => !r.error);
+await expect('المدير ما زال لا يرسل باسم غيره', 'P', `insert into messages (from_id, to_id, body) values ('${U.A}','${U.T1}','x')`, denied);
+await expect('المدير ما زال لا يضع درجة باسم غيره', 'P', `insert into grades (teacher_id, grade, principal_id) values ('${U.T1}', 2, '${U.A}')`, denied);
+await expect('المعلم ما زال لا يرسل ملف غيره', 'T1', `insert into submissions (user_id) values ('${U.T3}')`, denied);
+
 // دوال الخادم (service_role)
 await expect('دوال الخادم تعدّ الحسابات', 'service', 'select count(*) n from users', count(6));
 await expect('اسم مستخدم مكرر مرفوض', 'service', `insert into users (id, username, name, role) values ('${U.T3}','dup','x','teacher')`, denied);

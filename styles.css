@@ -232,3 +232,6 @@ input[readonly] { background: var(--soft); color: var(--ink); cursor: not-allowe
 table.dt th, table.dt td:not(:nth-child(2)) { white-space: nowrap; }
 table.dt td:nth-child(2) { width: 100%; }
 .doc-sign.two { grid-template-columns: 1fr 1fr; }
+.restore-rules { margin: 0; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 14px; }
+#restore-box { display: flex; flex-direction: column; gap: 10px; }
+#restore-box code { font-size: 14px; letter-spacing: .5px; }
