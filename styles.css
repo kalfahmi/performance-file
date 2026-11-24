@@ -143,6 +143,7 @@ table.dt thead th { background: var(--navy); color: #fff; font-weight: 600; }
 .doc-sign img, .sig-empty { height: 70px; width: 70%; object-fit: contain; }
 .sig-empty { border-bottom: 1px dashed #C5D2DA; }
 .doc-closing { margin-top: auto; display: flex; flex-direction: column; }
+.doc-end { display: flex; flex-direction: column; }
 .doc-foot { margin-top: auto; width: 100%; aspect-ratio: 1696 / 208; background-size: 100% 100%; background-repeat: no-repeat; }
 
 @media screen and (max-width: 720px) {
@@ -157,26 +158,26 @@ table.dt thead th { background: var(--navy); color: #fff; font-weight: 600; }
   /* هامش علوي وسفلي للصفحات التالية، والصفحة الأولى بلا هامش علوي لتبقى الترويسة ملاصقة لأعلى الورقة. */
   @page { size: A4; margin: 12mm 0; }
   @page :first { margin-top: 0; margin-bottom: 0; }
-  /* الصفحة الختامية بلا هامش سفلي حتى يلامس التذييل أسفل الورقة. */
-  @page closing { margin: 12mm 0 0; }
   /* كل عنصر من العناصر الأحد عشر يبدأ في صفحة جديدة (وقسم الشواهد يبدأ بالعنصر الأول في صفحة جديدة). */
   .doc-ev-sec { break-before: page; }
   .doc-ev-sec > .doc-el + .doc-el { break-before: page; }
   /* الصفحة الأخيرة: الرسالة في أعلاها، والتوقيعات ثم التذييل في أسفلها. */
-  /* كتلي في الطباعة: Chrome لا يطبّق الصفحات المسماة (page) داخل تخطيط flex. */
+  /* كتلي في الطباعة حتى تُحسب الصفحات بدقة. */
   #print-area.doc { display: block; }
-  .doc-closing { page: closing; break-before: page; min-height: 284mm; display: flex; flex-direction: column; }
-  .doc-closing .doc-sign { margin-top: auto; break-inside: avoid; }
+  /* ارتفاعها ارتفاع مساحة الصفحة بهوامشها العادية (297 - 12 - 12 = 273 ملم) مع هامش أمان، دون الاعتماد على الصفحات المسماة
+     التي لا تطبقها كل نسخ المتصفحات. التوقيعات والتذييل في أسفلها كتلة واحدة لا تنقسم. */
+  .doc-closing { break-before: page; min-height: 268mm; display: flex; flex-direction: column; }
+  .doc-closing .doc-end { margin-top: auto; break-inside: avoid; }
   .doc-closing .doc-foot { margin-top: 0; }
   body { background: #fff; }
   .no-print { display: none !important; }
   body * { visibility: hidden; }
   #print-area, #print-area * { visibility: visible; }
-  /* في التدفق العادي (لا absolute) حتى تعمل الصفحة المسماة closing وهوامشها. ما سواه مخفي بـ no-print. */
+  /* في التدفق العادي (لا absolute) حتى تُحسب الصفحات بدقة. ما سواه مخفي بـ no-print. */
   #print-area { position: static; width: 100%; max-width: none; min-height: 0; box-shadow: none; }
   .wrap, .pad, main { margin: 0 !important; padding: 0 !important; max-width: none !important; }
   .wrap, .doc-wrap { display: block !important; min-height: 0 !important; }
-  /* لا شيء بعد المستند في الطباعة: أي عنصر بعده ينشئ صفحة فارغة عند الخروج من الصفحة المسماة closing. */
+  /* لا شيء بعد المستند في الطباعة حتى لا تنشأ صفحة فارغة في آخره. */
   #toast, #modal { display: none !important; }
   .doc-wrap { padding: 0; overflow: visible; }
   table.dt thead th, .doc-head, .doc-foot { -webkit-print-color-adjust: exact; print-color-adjust: exact; }

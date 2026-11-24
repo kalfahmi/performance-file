@@ -706,9 +706,9 @@ function docHTML(f, p, imgs) {
     // الصفحة الختامية: رسالة المعلم في أعلاها، والتوقيعات والتذييل في أسفلها.
     '<div class="doc-closing">' +
     (pr.message ? '<section class="doc-sec"><h3>رسالة المعلم</h3><p class="doc-msg">' + esc(pr.message) + '</p></section>' : '') +
-    '<section class="doc-sign"><div><span class="muted">توقيع صاحب الملف</span>' + (imgs.ownerSig ? '<img src="' + imgs.ownerSig + '" alt="">' : '<div class="sig-empty"></div>') + '<strong>' + esc(pr.ownerName) + '</strong></div>' +
+    '<div class="doc-end"><section class="doc-sign"><div><span class="muted">توقيع صاحب الملف</span>' + (imgs.ownerSig ? '<img src="' + imgs.ownerSig + '" alt="">' : '<div class="sig-empty"></div>') + '<strong>' + esc(pr.ownerName) + '</strong></div>' +
     '<div><span class="muted">توقيع مدير المدرسة والختم</span><div class="doc-sig-row">' + (imgs.principalSig ? '<img src="' + imgs.principalSig + '" alt="">' : '<div class="sig-empty"></div>') + (imgs.stamp ? '<img class="doc-stamp" src="' + imgs.stamp + '" alt="">' : '') + '</div><strong>' + esc(pr.principalName) + '</strong></div></section>' +
-    '<footer class="doc-foot" style="background-image:url(assets/footer.png)"></footer>' +
+    '<footer class="doc-foot" style="background-image:url(assets/footer.png)"></footer></div>' +
     '</div></article></div>';
 }
 
