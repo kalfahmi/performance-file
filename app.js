@@ -298,7 +298,7 @@ function navItems() {
     list.push(['messages', 'رسائل المدير' + (S.unread ? ' <span class="badge" aria-label="' + S.unread + ' غير مقروءة">' + d(S.unread) + '</span>' : '')]);
     list.push(['submit', 'إرسال الملف إلى المدير']);
   }
-  if (own) list.push(['backup', 'النسخ الاحتياطي']);
+  if (own) list.push(['backup', S.me.role === 'admin' ? 'النسخ الاحتياطي' : 'تنزيل ملفي']);
   return list;
 }
 
@@ -1071,7 +1071,21 @@ function evidenceHTML(f, imgs) {
 /* ---------- النسخ الاحتياطي ---------- */
 
 function renderBackup() {
-  var who = S.me.role === 'admin' ? 'جميع الحسابات والملفات' : 'ملفك فقط';
+  if (S.me.role !== 'admin') {
+    main().innerHTML =
+      '<div class="page-head"><h2>تنزيل ملفي</h2></div>' +
+      '<section class="card"><h3>ملفي كاملًا (ZIP)</h3>' +
+      '<p class="muted" style="margin:0">ملف مضغوط تحفظه على جهازك، فيه:</p>' +
+      '<ul class="restore-rules"><li>مجلد لكل عنصر من عناصر الأداء، فيه شواهده بأسمائها الأصلية.</li>' +
+      '<li>«بيانات الملف»: ملخص مقروء لبياناتك وجاهزيتك وشواهد كل عنصر وتقديرك الذاتي.</li>' +
+      '<li>توقيعك' + (S.me.role === 'principal' ? ' وختم المدرسة' : '') + '.</li>' +
+      '<li>«نسخة احتياطية»: ملف بياناتك الذي يستعيد منه مسؤول النظام إن احتجت.</li></ul>' +
+      '<p class="muted" style="margin:0">لحفظ الملف بصيغة الطباعة استخدم «معاينة الملف» ثم «طباعة / حفظ PDF».</p>' +
+      '<div class="form-actions" style="justify-content:flex-start"><button class="btn primary" type="button" data-act="archive">تنزيل ملفي (ZIP)</button>' +
+      '<span id="archive-status" class="muted" aria-live="polite"></span></div></section>';
+    return;
+  }
+  var who = 'جميع الحسابات والملفات';
   main().innerHTML =
     '<div class="page-head"><h2>النسخ الاحتياطي</h2></div>' +
     '<section class="card"><h3>تنزيل نسخة احتياطية</h3>' +
@@ -1161,6 +1175,126 @@ function downloadBackup() {
     downloadBlob(new Blob([JSON.stringify(b, null, 2)], { type: 'application/json' }), 'backup-' + day + '.json');
     toast('تم تجهيز النسخة الاحتياطية.');
   }).catch(handleErr);
+}
+
+/* ---------- تنزيل ملفي كاملًا (ZIP) ---------- */
+
+var JSZIP_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+
+function loadJsZip() {
+  if (window.JSZip) return Promise.resolve();
+  return new Promise(function (resolve, reject) {
+    var sc = document.createElement('script');
+    sc.src = JSZIP_LIB;
+    sc.onload = resolve;
+    sc.onerror = function () { reject(new Error('تعذّر تحميل أداة الضغط. تحقق من الإنترنت ثم أعد المحاولة.')); };
+    document.head.appendChild(sc);
+  });
+}
+
+/** اسم صالح لملف أو مجلد في كل الأنظمة. */
+function safeName(name, fallback) {
+  var s = String(name || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 90);
+  return s || fallback;
+}
+
+/** ملخص مقروء لمحتوى الملف. */
+function archiveSummary(f, p) {
+  var pr = p.profile, s = f.summary;
+  var lines = [
+    'ملف الأداء الوظيفي',
+    '==================',
+    '',
+    'صاحب الملف: ' + (pr.ownerName || f.owner.name),
+    'الصفة: ' + (pr.ownerType || ''),
+    'المادة أو التخصص: ' + (pr.subject || ''),
+    'المرحلة: ' + (pr.stage || ''),
+    'المدرسة: ' + (pr.school || ''),
+    'إدارة التعليم: ' + (pr.eduOffice || ''),
+    (p.owner.role === 'principal' ? 'المسؤول المباشر: ' + [pr.reviewerTitle, pr.principalName].filter(Boolean).join(': ') : 'مدير المدرسة: ' + (pr.principalName || '')),
+    'العام الدراسي: ' + (pr.year || '') + 'هـ    الفصل: ' + (pr.term || ''),
+    '',
+    'جاهزية الشواهد: ' + s.readiness + '٪    التقدير الذاتي الاسترشادي: ' + s.selfScore + '٪    عدد الشواهد: ' + s.evidenceTotal,
+    ''
+  ];
+  f.elements.forEach(function (el) {
+    lines.push('');
+    lines.push(el.no + ') ' + el.name + '  (الوزن ' + el.weight + '٪، التقدير الذاتي: ' + RATING_LABEL[el.rating] + ')');
+    if (el.link) lines.push('   رابط المجلد: ' + el.link);
+    if (!el.evidence.length) lines.push('   لا توجد شواهد.');
+    el.evidence.forEach(function (x, i) {
+      lines.push('   ' + (i + 1) + '. ' + x.title + ' — ' + x.fileName + (x.description ? ' — ' + x.description : ''));
+    });
+  });
+  if (pr.message) { lines.push('', 'رسالة صاحب الملف:', pr.message); }
+  lines.push('', 'تاريخ التنزيل: ' + fmtDate(new Date().toISOString()));
+  return lines.join('\r\n');
+}
+
+/**
+ * يبني ملفًا مضغوطًا فيه: مجلد لكل عنصر بشواهده بأسمائها الأصلية، وملخص مقروء، والتوقيع (والختم للمدير)،
+ * وملف البيانات الذي يستعيد منه مسؤول النظام.
+ */
+function downloadMyArchive(btn) {
+  var status = document.getElementById('archive-status');
+  var say = function (msg) { if (status) status.textContent = msg; };
+  if (btn) btn.disabled = true;
+  say('جارٍ التجهيز…');
+  var me = S.me.id, file, profile;
+  return loadJsZip().then(function () {
+    return Promise.all([call('getFile', [S.token, me]), call('getProfile', [S.token, me])]);
+  }).then(function (r) {
+    file = r[0]; profile = r[1];
+    var zip = new window.JSZip();
+    var root = zip.folder(safeName('ملف الأداء - ' + (profile.profile.ownerName || file.owner.name), 'ملف الأداء'));
+    root.file('بيانات الملف.txt', '﻿' + archiveSummary(file, profile));
+    var all = [];
+    file.elements.forEach(function (el) {
+      var folder = root.folder((el.no < 10 ? '0' : '') + el.no + ' - ' + safeName(el.name, 'العنصر ' + el.no));
+      var used = {};
+      el.evidence.forEach(function (x) {
+        var base = safeName(x.fileName, 'شاهد');
+        var name = base, n = 2;
+        while (used[name]) { name = base.replace(/(\.[^.]*)?$/, ' (' + n++ + ')$1'); }
+        used[name] = true;
+        all.push({ folder: folder, name: name, id: x.id });
+      });
+    });
+    // الشواهد واحدًا واحدًا (حتى لا تُستهلك الذاكرة)، مع عرض التقدم.
+    var done = 0, missing = 0;
+    return all.reduce(function (p, item) {
+      return p.then(function () {
+        say('جارٍ تنزيل الشاهد ' + d(done + 1) + ' من ' + d(all.length) + '…');
+        return call('getEvidenceFile', [S.token, item.id]).then(function (fx) {
+          item.folder.file(item.name, fx.base64, { base64: true });
+        }).catch(function () { missing++; }).then(function () { done++; });
+      });
+    }, Promise.resolve()).then(function () {
+      var slots = profile.owner.role === 'principal' ? ['ownerSig', 'stamp'] : ['ownerSig'];
+      return Promise.all(slots.map(function (slot) {
+        return call('getProfileImage', [S.token, me, slot]).then(function (im) {
+          if (!im) return;
+          var ext = im.mime === 'image/jpeg' ? 'jpg' : im.mime.split('/')[1];
+          root.file((slot === 'stamp' ? 'الختم' : 'التوقيع') + '.' + ext, im.base64, { base64: true });
+        }).catch(function () {});
+      }));
+    }).then(function () {
+      return call('exportBackup', [S.token]).then(function (b) {
+        root.file('نسخة احتياطية.json', JSON.stringify(b, null, 2));
+      }).catch(function () {});
+    }).then(function () {
+      say('جارٍ ضغط الملف…');
+      return zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+    }).then(function (blob) {
+      var day = new Date().toISOString().slice(0, 10);
+      downloadBlob(blob, safeName('ملف الأداء - ' + (profile.profile.ownerName || file.owner.name), 'ملف الأداء') + ' - ' + day + '.zip');
+      say('تم التنزيل. عدد الشواهد: ' + d(done - missing) + (missing ? '، وتعذّر تنزيل ' + d(missing) + ' منها' : '') + '. الحجم: ' + fmtSize(blob.size) + '.');
+      toast('تم تجهيز ملفك.');
+    });
+  }).catch(function (err) {
+    say('');
+    handleErr(err);
+  }).then(function () { if (btn) btn.disabled = false; });
 }
 
 /* ---------- المدير ومسؤول النظام ---------- */
@@ -1392,6 +1526,7 @@ document.addEventListener('click', function (e) {
   if (a === 'sign') return openSignature(t.dataset.slot, t.dataset.id);
   if (a === 'note') return openNote(t.dataset.id, t.dataset.name);
   if (a === 'restore-apply') return applyRestore();
+  if (a === 'archive') return downloadMyArchive(t);
   if (a === 'restore-csv') return downloadRestorePasswords();
   if (a === 'del-msg') {
     var msgId = t.dataset.id, teacher = t.dataset.teacher, tname = t.dataset.name;
