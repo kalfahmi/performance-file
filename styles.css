@@ -150,10 +150,10 @@ table.dt thead th { background: var(--navy); color: #fff; font-weight: 600; }
 /* الورقة الختامية: التوقيعات والختم ثم التذييل ملاصقًا لأسفل الورقة. */
 .doc-end { margin-top: auto; display: flex; flex-direction: column; }
 .doc-sign { margin: 18px 28px 12px; display: grid; grid-template-columns: 1fr auto 1fr; gap: 24px; align-items: start; text-align: center; }
-.doc-stamp-col { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 110px; }
-.stamp-empty { width: 96px; height: 96px; }
+.doc-stamp-col { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 150px; }
+.stamp-empty { width: 140px; height: 140px; }
 .doc-sign > div { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.doc-sign > div:not(.doc-stamp-col) img, .sig-empty { height: 70px; width: 80%; object-fit: contain; }
+.doc-sign > div:not(.doc-stamp-col) img, .sig-empty { height: 56px; width: 70%; object-fit: contain; }
 .sig-empty { border-bottom: 1px dashed #C5D2DA; }
 .doc-foot { width: 100%; aspect-ratio: 1696 / 208; background-size: 100% 100%; background-repeat: no-repeat; }
 
@@ -205,7 +205,7 @@ table.dt thead th { background: var(--navy); color: #fff; font-weight: 600; }
 
 /* ---------- التواقيع والختم ---------- */
 .doc-sig-row { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 70px; }
-.doc-stamp { width: 96px; height: 96px; object-fit: contain; }
+.doc-stamp { width: 140px; height: 140px; object-fit: contain; }
 .img-thumb { display: block; max-width: 100%; max-height: 110px; object-fit: contain; margin: 6px 0; background: #fff; border: 1px solid #E3EAEE; border-radius: 8px; padding: 4px; }
 
 /* ---------- ميزات المدير: الشارة، الدرجة، التواقيع في الحسابات، الرسائل ---------- */
@@ -227,3 +227,4 @@ table.dt thead th { background: var(--navy); color: #fff; font-weight: 600; }
 .msg-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .msg p { margin: 8px 0 0; white-space: pre-wrap; }
 .other-input { margin-top: 6px; }
+input[readonly] { background: var(--soft); color: var(--ink); cursor: not-allowed; }

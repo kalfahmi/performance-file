@@ -294,14 +294,60 @@ API.getProfile = function (_t, targetId) {
   });
 };
 
-API.saveProfile = function (_t, data) {
+/** يحفظ الحقول المرسلة فقط. targetId لمسؤول النظام حين يعدّل ملف غيره (وإلا فملف المستخدم نفسه). */
+API.saveProfile = function (_t, data, targetId) {
   return sbMe().then(function (id) {
-    var row = { user_id: id };
+    var row = {};
     Object.keys(PROFILE_MAP).forEach(function (k) {
-      row[PROFILE_MAP[k]] = String(data[k] == null ? '' : data[k]).slice(0, k === 'message' ? 2000 : 150);
+      if (k in data) row[PROFILE_MAP[k]] = String(data[k] == null ? '' : data[k]).slice(0, k === 'message' ? 2000 : 150);
     });
-    return sb.from('profiles').upsert(row, { onConflict: 'user_id' });
-  }).then(function (r) { sbData(r, 'تعذّر حفظ بيانات الملف.'); return true; });
+    return sb.from('profiles').update(row).eq('user_id', targetId || id).select('user_id');
+  }).then(function (r) {
+    if (!sbData(r, 'تعذّر حفظ بيانات الملف.').length) throw new Error('لا تملك صلاحية تعديل هذا الملف.');
+    return true;
+  });
+};
+
+/** دليل المدارس: { school, principalName, eduOffice } من ملفات المديرين. */
+API.schoolDirectory = function () {
+  return sb.rpc('school_directory').then(function (r) {
+    return (sbData(r) || []).map(function (x) { return { school: x.school, principalName: x.principal_name, eduOffice: x.edu_office }; });
+  });
+};
+
+/** كل الرسائل الواردة لمعلم (لمسؤول النظام)، مع اسم المرسل. */
+API.messagesTo = function (_t, teacherId) {
+  return sb.from('messages').select('id, from_id, body, created_at, read_at').eq('to_id', teacherId).order('created_at').then(function (r) {
+    var rows = sbData(r, 'تعذّر تحميل الرسائل.');
+    var ids = rows.map(function (m) { return m.from_id; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+    return (ids.length ? sb.from('users').select('id, name').in('id', ids) : Promise.resolve({ data: [] })).then(function (n) {
+      var map = {};
+      (n.data || []).forEach(function (u) { map[u.id] = u.name; });
+      return rows.map(function (m, i) {
+        return { id: m.id, no: i + 1, from: map[m.from_id] || '', body: m.body, createdAt: m.created_at, read: !!m.read_at };
+      });
+    });
+  });
+};
+
+API.deleteMessage = function (_t, id) {
+  return sb.from('messages').delete().eq('id', id).select('id').then(function (r) {
+    if (!sbData(r, 'تعذّر حذف الرسالة.').length) throw new Error('لا تملك صلاحية حذف هذه الرسالة.');
+    return true;
+  });
+};
+
+/** حذف حساب نهائيًا (لمسؤول النظام): ملفاته في التخزين أولًا، ثم الحساب وكل سجلاته. */
+API.deleteAccount = function (_t, userId) {
+  var wipe = function (bucket) {
+    return sb.storage.from(bucket).list(userId, { limit: 1000 }).then(function (r) {
+      var names = (r.data || []).map(function (o) { return userId + '/' + o.name; });
+      return names.length ? sb.storage.from(bucket).remove(names) : null;
+    });
+  };
+  return Promise.all([wipe('evidence'), wipe('images')]).then(function () {
+    return sbFunction('admin-users', { action: 'delete', id: userId });
+  });
 };
 
 API.uploadProfileImage = function (_t, targetId, slot, mime, b64) {

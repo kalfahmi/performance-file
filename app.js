@@ -127,6 +127,52 @@ function readBase64(file) {
   });
 }
 
+/**
+ * يضغط صورة في المتصفح حتى لا يتجاوز حجمها maxBytes: يصغّر الأبعاد إلى maxDim ثم يخفض الجودة تدريجيًا.
+ * keepAlpha: صيغة WebP تحفظ الخلفية الشفافة (للتوقيع والختم)، وإلا JPEG (لصور الشواهد).
+ * يعيد { base64, mime, size }.
+ */
+function compressImage(file, maxBytes, maxDim, keepAlpha) {
+  return new Promise(function (resolve, reject) {
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function () {
+      URL.revokeObjectURL(url);
+      var scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+      var mime = keepAlpha ? 'image/webp' : 'image/jpeg';
+      var quality = 0.88;
+      var attempt = function () {
+        var c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(img.naturalWidth * scale));
+        c.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        var ctx = c.getContext('2d');
+        if (!keepAlpha) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); }
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        var dataUrl = c.toDataURL(mime, quality);
+        var b64 = dataUrl.split(',')[1];
+        var size = Math.floor(b64.length * 3 / 4);
+        if (size <= maxBytes || (quality <= 0.5 && scale < 0.2)) {
+          if (size > maxBytes) return reject(new Error('تعذّر تصغير الصورة إلى الحجم المسموح.'));
+          return resolve({ base64: b64, mime: dataUrl.slice(5, dataUrl.indexOf(';')), size: size });
+        }
+        if (quality > 0.55) quality -= 0.1; else scale *= 0.8;
+        attempt();
+      };
+      attempt();
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('تعذّرت قراءة الصورة.')); };
+    img.src = url;
+  });
+}
+
+/** يقرأ الصورة كما هي إن كانت ضمن الحد، وإلا يضغطها. */
+function prepareImage(file, maxBytes, maxDim, keepAlpha) {
+  if (file.size <= maxBytes) {
+    return readBase64(file).then(function (b64) { return { base64: b64, mime: file.type, size: file.size }; });
+  }
+  return compressImage(file, maxBytes, maxDim, keepAlpha);
+}
+
 function statusOf(c) {
   return c >= 2 ? ['pill-done', 'مكتمل'] : (c === 1 ? ['pill-partial', 'ناقص شاهد'] : ['pill-none', 'بلا شواهد']);
 }
@@ -347,7 +393,7 @@ function openElement(no) {
       '<label>نبذة عن الشاهد (اختياري)<textarea name="description" maxlength="300" rows="2"></textarea></label>' +
       '<label>الملف<input name="file" type="file" required accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.doc,.docx,.xls,.xlsx,.ppt,.pptx"></label>' +
       '<button class="btn primary" type="submit">رفع الشاهد</button></form>' +
-      '<p class="muted" style="margin:0">الحد الأقصى ٤ ميغابايت. الصيغ: PDF وصور وWord وExcel وPowerPoint.</p></div>'
+      '<p class="muted" style="margin:0">الحد الأقصى ٤ ميغابايت للملفات. الصور الأكبر من ١ ميغابايت تُضغط تلقائيًا. الصيغ: PDF وصور وWord وExcel وPowerPoint.</p></div>'
     : '';
   var ratings = mine
     ? '<div class="section-box"><h3>التقدير الذاتي</h3><div class="ratings" role="group" aria-label="التقدير الذاتي">' +
@@ -380,16 +426,23 @@ function upload(form) {
   var file = form.file.files[0];
   var title = form.title.value.trim();
   if (!file) return toast('اختر ملفًا أولًا.', 'err');
-  if (file.size > MAX_BYTES) return toast('حجم الملف أكبر من ٤ ميغابايت.', 'err');
   var mime = file.type === 'image/jpg' ? 'image/jpeg' : (file.type || MIME[ext(file.name)] || '');
+  // صور الشواهد فوق ١ ميغابايت تُضغط قبل الرفع (توفيرًا للمساحة)، وما سواها يبقى حدّه ٤ ميغابايت.
+  var squeeze = /^image\/(jpeg|png|webp)$/.test(mime) && file.size > MAX_IMG_BYTES;
+  if (!squeeze && file.size > MAX_BYTES) return toast('حجم الملف أكبر من ٤ ميغابايت.', 'err');
   var btn = form.querySelector('button');
   btn.disabled = true;
-  btn.textContent = 'جارٍ الرفع…';
-  return readBase64(file).then(function (b64) {
+  btn.textContent = squeeze ? 'جارٍ ضغط الصورة…' : 'جارٍ الرفع…';
+  var name = squeeze ? file.name.replace(/\.[^.]+$/, '') + '.jpg' : file.name;
+  var ready = squeeze
+    ? compressImage(file, MAX_IMG_BYTES, 2000, false)
+    : readBase64(file).then(function (b64) { return { base64: b64, mime: mime }; });
+  return ready.then(function (im) {
+    btn.textContent = 'جارٍ الرفع…';
     var desc = String(form.querySelector('[name="description"]').value || '').trim();
-    return call('uploadEvidence', [S.token, Number(form.dataset.element), title, file.name, mime, b64, desc]);
+    return call('uploadEvidence', [S.token, Number(form.dataset.element), title, name, im.mime, im.base64, desc]);
   }).then(function () {
-    toast('تم رفع الشاهد.');
+    toast(squeeze ? 'ضُغطت الصورة ورُفع الشاهد.' : 'تم رفع الشاهد.');
     closeModal();
     return loadElements();
   }).catch(function (err) {
@@ -473,15 +526,50 @@ function selectFieldHTML(f, value, dis) {
 function loadProfileView() {
   return Promise.all([
     call('getProfile', [S.token, S.targetId]),
-    call('schoolNames').catch(function () { return []; })
+    call('schoolNames').catch(function () { return []; }),
+    call('schoolDirectory').catch(function () { return []; })
   ]).then(function (r) {
     S.profile = r[0];
+    S.directory = r[2] || [];
     var schools = (r[1] || []).slice();
+    S.directory.forEach(function (x) { if (schools.indexOf(x.school) === -1) schools.push(x.school); });
     if (schools.indexOf(SCHOOL) === -1) schools.unshift(SCHOOL);
-    S.schools = schools;
+    S.schools = schools.sort(function (a, b) { return a.localeCompare(b, 'ar'); });
     renderProfile();
     loadThumbs();
   }).catch(handleErr);
+}
+
+/** المدرسة المسجلة في دليل المديرين (اسم مديرها وإدارة تعليمها)، أو null. */
+function schoolEntry(name) {
+  return (S.directory || []).filter(function (x) { return x.school === name; })[0] || null;
+}
+
+/**
+ * عند اختيار مدرسة لها مدير مسجل: يُكتب اسم المدير ولا يُعدَّل، وتُكتب إدارة التعليم.
+ * يُستدعى عند تغيير المدرسة وبعد عرض النموذج.
+ */
+function applySchool(form) {
+  if (!form || !form.principalName) return;
+  var sel = form.querySelector('select[name="school"]');
+  var school = sel && sel.value === OTHER ? '' : (sel ? sel.value : '');
+  var entry = schoolEntry(school);
+  var pn = form.principalName;
+  if (entry) {
+    pn.value = entry.principalName;
+    pn.readOnly = true;
+    pn.title = 'اسم مدير هذه المدرسة كما سجّله في النظام';
+    var eo = form.querySelector('select[name="eduOffice"]');
+    if (eo && entry.eduOffice) {
+      var known = Array.prototype.some.call(eo.options, function (o) { return o.value === entry.eduOffice; });
+      eo.value = known ? entry.eduOffice : OTHER;
+      var other = form.querySelector('[name="eduOffice__other"]');
+      if (other) { other.hidden = known; if (!known) other.value = entry.eduOffice; }
+    }
+  } else {
+    pn.readOnly = false;
+    pn.title = '';
+  }
 }
 
 function imgCardsHTML(role, userId, images, canEdit) {
@@ -498,11 +586,20 @@ function imgCardsHTML(role, userId, images, canEdit) {
 }
 
 function renderProfile() {
-  var p = S.profile, pr = p.profile, can = p.editable;
-  var canImg = can || S.me.role === 'admin';
+  var p = S.profile, pr = p.profile;
+  var own = p.owner.id === S.me.id;
+  // مسؤول النظام يعدّل بيانات ملف أي حساب.
+  var can = p.editable || S.me.role === 'admin';
+  var canImg = can;
   if (p.owner.role === 'principal') {
+    var pdis = can ? '' : ' disabled';
+    var pf = PROFILE_FIELDS.filter(function (f) { return f.key === 'school' || f.key === 'eduOffice'; });
     main().innerHTML =
-      '<div class="page-head"><h2>' + esc(can ? 'بيانات الملف' : 'بيانات ' + p.owner.name) + '</h2></div>' +
+      '<div class="page-head"><h2>' + esc(own ? 'بيانات الملف' : 'بيانات ' + p.owner.name) + '</h2></div>' +
+      '<section class="card"><h3>المدرسة</h3><form class="pform" data-action="profile" data-fields="school,eduOffice">' +
+      pf.map(function (f) { return '<label>' + esc(f.label) + selectFieldHTML(f, pr[f.key] || '', pdis) + '</label>'; }).join('') +
+      (can ? '<div class="form-actions"><button class="btn primary" type="submit">حفظ</button></div>' : '') + '</form>' +
+      '<p class="muted" style="margin:0">عندما يختار المعلم هذه المدرسة في بيانات ملفه، يُكتب اسمك مديرًا لها تلقائيًا، وتُكتب إدارة التعليم.</p></section>' +
       '<section class="card"><h3>توقيع المدير وختم المدرسة</h3><div class="img-grid">' + imgCardsHTML('principal', p.owner.id, p.images, canImg) + '</div>' +
       '<p class="muted" style="margin:0">يظهران في ملفات المعلمين المسندين إليك عند معاينتها وطباعتها من حسابك أو من حساب مسؤول النظام، ولا يظهران للمعلم.</p></section>';
     return;
@@ -525,11 +622,14 @@ function renderProfile() {
         : 'لن يظهر ملفك لحساب المدير قبل أن ترسله. الإرسال من القائمة العلوية.') + '</p></section>'
     : '';
   main().innerHTML =
-    '<div class="page-head"><h2>' + esc(can ? 'بيانات الملف' : 'بيانات ملف ' + p.owner.name) + '</h2></div>' +
-    '<section class="card"><h3>المعلومات الأساسية</h3>' + form + '</section>' +
+    '<div class="page-head"><h2>' + esc(own ? 'بيانات الملف' : 'بيانات ملف ' + p.owner.name) + '</h2></div>' +
+    (!own && S.me.role === 'admin' ? '<div class="notice">تعدّل بيانات ملف ' + esc(p.owner.name) + ' بصفتك مسؤول النظام.</div>' : '') +
+    '<section class="card"><h3>المعلومات الأساسية</h3>' + form +
+    '<p class="muted" style="margin:6px 0 0">إذا كانت المدرسة مسجلة باسم مديرها في النظام، يُكتب اسم المدير تلقائيًا ولا يُعدَّل. والمدرسة وإدارة التعليم واسم المدير تظهر في المعاينة والطباعة.</p></section>' +
     '<section class="card"><h3>التوقيع</h3><div class="img-grid">' + imgs + '</div>' +
     '<p class="muted" style="margin:0">توقيعك يضيفه أنت أو مسؤول النظام، ويظهر في معاينة الملف وطباعته. توقيع المدير والختم يضيفهما المدير في ملفه أو مسؤول النظام.</p></section>' +
     submit;
+  applySchool(main().querySelector('form[data-action="profile"]'));
 }
 
 /** بعد رفع صورة أو رسم توقيع: تحديث الشاشة التي جاء منها (الحسابات أو بيانات الملف). */
@@ -546,11 +646,12 @@ function pickImage(slot, userId) {
   inp.onchange = function () {
     var file = inp.files[0];
     if (!file) return;
-    if (file.size > MAX_IMG_BYTES) return toast('حجم الصورة أكبر من ١ ميغابايت.', 'err');
-    readBase64(file).then(function (b64) {
-      return call('uploadProfileImage', [S.token, target, slot, file.type, b64]);
+    var big = file.size > MAX_IMG_BYTES;
+    if (big) toast('الصورة أكبر من ١ ميغابايت، جارٍ ضغطها…');
+    prepareImage(file, MAX_IMG_BYTES, 1600, true).then(function (im) {
+      return call('uploadProfileImage', [S.token, target, slot, im.mime, im.base64]);
     }).then(function () {
-      toast('تم رفع الصورة.');
+      toast(big ? 'ضُغطت الصورة ورُفعت.' : 'تم رفع الصورة.');
       return afterImageSaved();
     }).catch(handleErr);
   };
@@ -774,7 +875,7 @@ function docHTML(f, p, imgs) {
   // المستند أوراق A4 ثابتة: الأولى للبيانات، ثم أوراق العناصر (تُبنى بالقياس في paginateDoc)، ثم الورقة الختامية.
   return '<div class="doc-wrap"><div class="doc" id="print-area">' +
     '<section class="a4 a4-first">' +
-    '<header class="doc-head" style="background-image:url(assets/header.png)"><div class="doc-head-text"><strong>' + esc(EDU) + '</strong></div><div class="doc-head-tab">' + esc(SCHOOL) + '</div></header>' +
+    '<header class="doc-head" style="background-image:url(assets/header.png)"><div class="doc-head-text"><strong>' + esc(pr.eduOffice || EDU) + '</strong></div><div class="doc-head-tab">' + esc(pr.school || SCHOOL) + '</div></header>' +
     '<div class="doc-title">' +
     '<div><h1>ملف الأداء الوظيفي</h1><p>' + esc(pr.ownerName) + ' · ' + esc(pr.term) + ' · ' + esc(pr.year) + '</p></div></div>' +
     '<section class="doc-sec"><h3>بيانات الملف</h3><table class="kv">' + kv + '</table></section>' +
@@ -1036,15 +1137,19 @@ function openNote(teacherId, name) {
     '<form class="col" data-action="note" data-id="' + esc(teacherId) + '" data-name="' + esc(name) + '">' +
     '<label>نص الملاحظة<textarea name="body" rows="4" maxlength="2000" required></textarea></label>' +
     '<div class="form-actions"><button class="btn" type="button" data-act="close">إلغاء</button><button class="btn primary" type="submit">إرسال</button></div></form>');
-  call('sentMessages', [S.token, teacherId]).then(function (list) {
+  // مسؤول النظام يرى كل الرسائل الواردة للمعلم (من أي مدير) ويستطيع حذفها. المدير يرى ما أرسله هو.
+  var admin = S.me.role === 'admin';
+  call(admin ? 'messagesTo' : 'sentMessages', [S.token, teacherId]).then(function (list) {
     var box = document.getElementById('note-history');
     if (!box) return;
     box.className = 'msg-list';
     box.innerHTML = list.length
       ? list.slice().reverse().map(function (m) {
-          return '<div class="msg"><div class="msg-head"><strong>ملاحظة رقم ' + d(m.no) + '</strong><span class="muted">' + esc(fmtDate(m.createdAt)) + ' · ' + (m.read ? 'قُرئت' : 'لم تُقرأ بعد') + '</span></div><p>' + esc(m.body) + '</p></div>';
+          return '<div class="msg"><div class="msg-head"><strong>' + (admin ? 'رسالة' : 'ملاحظة') + ' رقم ' + d(m.no) + '</strong><span class="muted">' +
+            (admin && m.from ? esc(m.from) + ' · ' : '') + esc(fmtDate(m.createdAt)) + ' · ' + (m.read ? 'قُرئت' : 'لم تُقرأ بعد') + '</span></div><p>' + esc(m.body) + '</p>' +
+            (admin ? '<div class="form-actions"><button class="btn small danger" type="button" data-act="del-msg" data-id="' + esc(m.id) + '" data-teacher="' + esc(teacherId) + '" data-name="' + esc(name) + '">حذف الرسالة</button></div>' : '') + '</div>';
         }).join('')
-      : '<p class="muted" style="margin:0">لم ترسل لهذا المعلم ملاحظات بعد.</p>';
+      : '<p class="muted" style="margin:0">' + (admin ? 'لا توجد رسائل لهذا المعلم.' : 'لم ترسل لهذا المعلم ملاحظات بعد.') + '</p>';
   }).catch(handleErr);
 }
 
@@ -1091,6 +1196,8 @@ function renderAccounts() {
       '<button class="btn small" type="button" data-act="reset" data-id="' + esc(u.id) + '" data-name="' + esc(u.name) + '">تعيين كلمة مرور</button>' +
       assign +
       (self ? '' : '<button class="btn small" type="button" data-act="toggle" data-id="' + esc(u.id) + '" data-active="' + (u.active ? '1' : '0') + '">' + (u.active ? 'إيقاف' : 'تفعيل') + '</button>') +
+      (u.role === 'teacher' ? '<button class="btn small" type="button" data-act="open" data-id="' + esc(u.id) + '">فتح الملف</button>' : '') +
+      (self ? '' : '<button class="btn small danger" type="button" data-act="del-user" data-id="' + esc(u.id) + '" data-name="' + esc(u.name) + '">حذف</button>') +
       '</div></td></tr>';
   }).join('');
   main().innerHTML =
@@ -1193,6 +1300,27 @@ document.addEventListener('click', function (e) {
   if (a === 'pick-img') return pickImage(t.dataset.slot, t.dataset.id);
   if (a === 'sign') return openSignature(t.dataset.slot, t.dataset.id);
   if (a === 'note') return openNote(t.dataset.id, t.dataset.name);
+  if (a === 'del-msg') {
+    var msgId = t.dataset.id, teacher = t.dataset.teacher, tname = t.dataset.name;
+    return askConfirm('حذف هذه الرسالة نهائيًا؟ تختفي من حساب المعلم ومن سجل المدير.', 'حذف الرسالة', function () {
+      return call('deleteMessage', [S.token, msgId]).then(function () {
+        toast('حُذفت الرسالة.');
+        openNote(teacher, tname);
+      }).catch(handleErr);
+    }, true);
+  }
+  if (a === 'del-user') {
+    var uid = t.dataset.id, uname = t.dataset.name;
+    return askConfirm('حذف حساب «' + uname + '» نهائيًا؟ يُحذف معه ملفه وشواهده وتوقيعه ورسائله ودرجته، ولا يمكن التراجع. إن أردت منعه من الدخول فقط فاستخدم «إيقاف».', 'حذف نهائي', function () {
+      var btn = document.querySelector('#modal [data-act="confirm-yes"]');
+      if (btn) { btn.disabled = true; btn.textContent = 'جارٍ الحذف…'; }
+      return call('deleteAccount', [S.token, uid]).then(function () {
+        closeModal();
+        toast('حُذف الحساب.');
+        return loadAccounts();
+      }).catch(function (err) { closeModal(); handleErr(err); });
+    }, true);
+  }
   if (a === 'sig-clear') {
     if (S.sig) S.sig.getContext('2d').clearRect(0, 0, S.sig.width, S.sig.height);
     return;
@@ -1215,9 +1343,11 @@ document.addEventListener('change', function (e) {
   var sel = e.target;
   if (sel.tagName !== 'SELECT' || sel.dataset.other !== '1') return;
   var other = sel.form && sel.form.querySelector('[name="' + sel.name + '__other"]');
-  if (!other) return;
-  other.hidden = sel.value !== OTHER;
-  if (!other.hidden) other.focus();
+  if (other) {
+    other.hidden = sel.value !== OTHER;
+    if (!other.hidden) other.focus();
+  }
+  if (sel.name === 'school') applySchool(sel.form);
 });
 
 document.addEventListener('submit', function (e) {
@@ -1317,13 +1447,19 @@ document.addEventListener('submit', function (e) {
 
   if (action === 'profile') {
     var data = {};
-    PROFILE_FIELDS.forEach(function (f) {
+    // نموذج المدير يحوي بعض الحقول فقط (data-fields)، فلا تُمسح الحقول الأخرى.
+    var only = form.dataset.fields ? form.dataset.fields.split(',') : null;
+    var fieldsIn = PROFILE_FIELDS.filter(function (f) { return !only || only.indexOf(f.key) !== -1; });
+    fieldsIn.forEach(function (f) {
       data[f.key] = val(f.key) === OTHER ? val(f.key + '__other') : val(f.key);
     });
-    var missing = PROFILE_FIELDS.filter(function (f) { return f.other && val(f.key) === OTHER && !val(f.key + '__other'); })[0];
+    var missing = fieldsIn.filter(function (f) { return f.other && val(f.key) === OTHER && !val(f.key + '__other'); })[0];
     if (missing) return toast('اكتب ' + missing.label + ' في الحقل الظاهر تحت «أخرى».', 'err');
-    data.message = raw('message').trim();
-    return call('saveProfile', [S.token, data]).then(function () {
+    if (!only) data.message = raw('message').trim();
+    // اسم المدير من الدليل إن كانت المدرسة مسجلة (ولو عُدّل الحقل بطريقة ما).
+    var entry = !only && schoolEntry(data.school);
+    if (entry) data.principalName = entry.principalName;
+    return call('saveProfile', [S.token, data, S.targetId]).then(function () {
       toast('تم حفظ بيانات الملف.');
       return loadProfileView();
     }).catch(handleErr);

@@ -179,6 +179,15 @@ await expect('الحساب الموقوف لا يرى أسماء المدارس'
 await expect('أي حساب فعّال يرى أسماء المدارس', 'P2', `select count(*) n from school_names() s where s = 'مدرسة الاختبار'`, count(1));
 await expect('الزائر لا يرى أسماء المدارس', 'anon', `select count(*) n from school_names()`, denied);
 
+// دليل المدارس (migration 0005)
+await expect('المدير يضع مدرسته وإدارتها في ملفه', 'P', `update profiles set school='مدرسة المدير', edu_office='إدارة الاختبار' where user_id='${U.P}'`, r => r.affected === 1);
+await expect('المعلم يرى المدرسة واسم مديرها', 'T1', `select count(*) n from school_directory() d where d.school='مدرسة المدير' and d.principal_name='مدير' and d.edu_office='إدارة الاختبار'`, count(1));
+await expect('مدرسة المعلم ليست في دليل المديرين', 'T1', `select count(*) n from school_directory() d where d.school='مدرسة الاختبار'`, count(0));
+await expect('الزائر لا يرى الدليل', 'anon', `select count(*) n from school_directory()`, denied);
+await expect('مسؤول النظام يعدّل بيانات ملف معلم', 'A', `update profiles set subject='الرياضيات' where user_id='${U.T1}'`, r => r.affected === 1);
+await expect('مسؤول النظام يحذف رسالة', 'A', `delete from messages where to_id='${U.T1}' and from_id='${U.P}'`, r => r.affected === 1);
+await expect('المعلم لا يحذف رسائله', 'T1', `delete from messages where to_id='${U.T1}'`, none);
+
 // دوال الخادم (service_role)
 await expect('دوال الخادم تعدّ الحسابات', 'service', 'select count(*) n from users', count(6));
 await expect('اسم مستخدم مكرر مرفوض', 'service', `insert into users (id, username, name, role) values ('${U.T3}','dup','x','teacher')`, denied);
