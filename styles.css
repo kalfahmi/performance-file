@@ -124,7 +124,7 @@ select:disabled, input:disabled, textarea:disabled { background: var(--soft); co
 .doc-head { position: relative; width: 100%; aspect-ratio: 1696 / 418; background-size: 100% 100%; background-repeat: no-repeat; }
 .doc-head-text { position: absolute; top: 26%; left: 5%; right: auto; max-width: 46%; text-align: right; color: #fff; display: flex; flex-direction: column; gap: 4px; font-size: clamp(11px, 2.4vw, 15px); }
 .doc-head-text strong { font-size: clamp(13px, 2.8vw, 18px); }
-.doc-title { display: grid; grid-template-columns: 90px 1fr 90px; align-items: center; gap: 12px; padding: 16px 28px 6px; text-align: center; }
+.doc-title { display: block; padding: 16px 28px 6px; text-align: center; }
 .doc-title h1 { font-size: 24px; color: var(--navy); }
 .doc-title p { margin: 0; color: var(--muted); font-size: 14px; }
 .doc-logo { height: 70px; display: grid; place-items: center; }
@@ -144,7 +144,7 @@ table.dt thead th { background: var(--navy); color: #fff; font-weight: 600; }
 
 @media (max-width: 720px) {
   .pform, .img-grid { grid-template-columns: 1fr; }
-  .doc-title { grid-template-columns: 56px 1fr 56px; padding: 12px 14px 4px; }
+  .doc-title { padding: 12px 14px 4px; }
   .doc-title h1 { font-size: 18px; }
   .doc-sec { padding: 8px 14px 2px; }
   table.kv th { width: 30%; }

@@ -41,17 +41,22 @@ var S = { token: null, me: null, view: null, inFile: false, targetId: null, file
 /* ---------- الاتصال بالخادم ---------- */
 
 function call(fn, args) {
+  var ctrl = new AbortController();
+  var timer = setTimeout(function () { ctrl.abort(); }, 20000);
   return fetch(API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ fn: fn, args: args || [] })
+    body: JSON.stringify({ fn: fn, args: args || [] }),
+    signal: ctrl.signal
   }).then(function (r) {
+    clearTimeout(timer);
     if (!r.ok) throw new Error('تعذّر الوصول إلى الخادم (' + r.status + ').');
     return r.json();
   }).then(function (res) {
     if (res.error) throw new Error(res.error);
     return res.result;
   }, function () {
+    clearTimeout(timer);
     throw new Error('تعذّر الاتصال بالخادم. تحقق من الإنترنت ثم أعد المحاولة.');
   });
 }
@@ -114,6 +119,11 @@ function handleErr(err) {
     renderLogin();
   }
   toast(msg, 'err');
+  var m = main();
+  if (m && m.innerHTML.indexOf('جارٍ التحميل') !== -1) {
+    m.innerHTML = '<div class="error-box">' + esc(msg) + '</div>' +
+      '<p><button class="btn small" type="button" data-act="tab" data-view="' + esc(S.view || 'elements') + '">إعادة المحاولة</button></p>';
+  }
 }
 
 function readBase64(file) {
@@ -218,6 +228,7 @@ function navItems() {
   var list = [];
   if (!own) list.push(['teachers', 'رجوع إلى المعلمين']);
   list.push(['elements', 'عناصر الأداء'], ['profile', 'بيانات الملف'], ['preview', 'معاينة الملف']);
+  if (own && S.me.role === 'teacher') list.push(['submit', 'إرسال الملف إلى المدير']);
   if (own) list.push(['backup', 'النسخ الاحتياطي']);
   return list;
 }
@@ -233,6 +244,7 @@ function renderNav() {
 
 /** التنقل الرئيسي. id اختياري لفتح ملف معلم محدد. */
 function go(view, id) {
+  if (view === 'submit') return submitPrincipal();
   S.view = view;
   if (main()) main().innerHTML = '<div class="notice" aria-live="polite">جارٍ التحميل…</div>';
   if (view === 'teachers') { S.inFile = false; renderNav(); return loadTeachers(); }
@@ -452,10 +464,8 @@ function renderProfile() {
   var submit = (can && S.me.role === 'teacher')
     ? '<section class="card"><h3>إرسال الملف إلى المدير</h3>' +
       '<p class="muted" style="margin:0">' + (p.sentAt
-        ? 'أُرسل الملف إلى المدير في ' + esc(fmtDate(p.sentAt)) + '. يمكنك إعادة الإرسال بعد أي تعديل.'
-        : 'لن يظهر ملفك لحساب المدير قبل أن ترسله.') + '</p>' +
-      '<div class="form-actions"><button class="btn primary" type="button" data-act="submit-principal">' +
-      (p.sentAt ? 'إعادة الإرسال إلى المدير' : 'إرسال الملف إلى المدير') + '</button></div></section>'
+        ? 'أُرسل الملف إلى المدير في ' + esc(fmtDate(p.sentAt)) + '. يمكنك إعادة الإرسال من القائمة العلوية بعد أي تعديل.'
+        : 'لن يظهر ملفك لحساب المدير قبل أن ترسله. الإرسال من القائمة العلوية.') + '</p></section>'
     : '';
   main().innerHTML =
     '<div class="page-head"><h2>' + esc(can ? 'بيانات الملف' : 'بيانات ملف ' + p.owner.name) + '</h2></div>' +
@@ -553,7 +563,7 @@ function submitPrincipal() {
   if (!confirm('إرسال الملف إلى المدير؟ يظهر الملف لحساب المدير بعد الإرسال.')) return;
   return call('submitToPrincipal', [S.token]).then(function () {
     toast('تم إرسال الملف إلى المدير.');
-    return loadProfileView();
+    return go('profile', S.targetId);
   }).catch(handleErr);
 }
 
@@ -803,10 +813,11 @@ function renderTeachers() {
   var list = S.users.filter(function (u) { return u.role === 'teacher'; });
   var rows = list.map(function (u) {
     var s = u.summary;
-    return '<tr><td>' + esc(u.name) + '</td><td dir="ltr">' + esc(u.username) + '</td>' +
+    return '<tr><td>' + esc(u.name) + '<br><span class="muted">' + (u.submitted ? 'أرسل ملفه إلى المدير' : 'لم يرسل ملفه بعد') + '</span></td><td dir="ltr">' + esc(u.username) + '</td>' +
       '<td><div class="meter"><span style="width:' + s.readiness + '%"></span></div><span class="muted">' + pct(s.readiness) + '</span></td>' +
       '<td>' + d(s.evidenceTotal) + '</td><td>' + (u.active ? 'فعّال' : 'موقوف') + '</td>' +
-      '<td><button class="btn small" type="button" data-act="open" data-id="' + esc(u.id) + '">فتح الملف</button></td></tr>';
+      '<td><button class="btn small" type="button" data-act="open" data-id="' + esc(u.id) + '"' +
+      (S.me.role === 'principal' && !u.submitted ? ' disabled title="يفتح بعد إرسال المعلم ملفه"' : '') + '>فتح الملف</button></td></tr>';
   }).join('');
   main().innerHTML = '<section class="card"><h2>المعلمون</h2>' +
     (list.length
