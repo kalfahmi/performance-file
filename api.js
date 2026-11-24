@@ -352,6 +352,13 @@ API.getPrincipalImages = function (_t, teacherId) {
   });
 };
 
+/** أسماء المدارس المسجلة في النظام (لقائمة «المدرسة»). */
+API.schoolNames = function () {
+  return sb.rpc('school_names').then(function (r) {
+    return (sbData(r) || []).map(function (x) { return typeof x === 'string' ? x : x.school_names; }).filter(Boolean);
+  });
+};
+
 /* ---------- الرسائل ---------- */
 
 /** رسائل المستخدم الواردة، مرقّمة من الأقدم (رقم ١) إلى الأحدث. */

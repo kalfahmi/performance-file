@@ -173,6 +173,12 @@ await expect('المعلم لا يرى درجته', 'T1', `select count(*) n fro
 await expect('مدير آخر لا يرى الدرجة', 'P2', `select count(*) n from grades where teacher_id='${U.T1}'`, count(0));
 await expect('مسؤول النظام يرى الدرجات', 'A', `select count(*) n from grades`, count(1));
 
+// أسماء المدارس (migration 0004)
+await expect('مسؤول النظام يضع اسم مدرسة', 'A', `update profiles set school='مدرسة الاختبار' where user_id='${U.T1}'`, r => r.affected === 1);
+await expect('الحساب الموقوف لا يرى أسماء المدارس', 'T2', `select count(*) n from school_names()`, count(0));
+await expect('أي حساب فعّال يرى أسماء المدارس', 'P2', `select count(*) n from school_names() s where s = 'مدرسة الاختبار'`, count(1));
+await expect('الزائر لا يرى أسماء المدارس', 'anon', `select count(*) n from school_names()`, denied);
+
 // دوال الخادم (service_role)
 await expect('دوال الخادم تعدّ الحسابات', 'service', 'select count(*) n from users', count(6));
 await expect('اسم مستخدم مكرر مرفوض', 'service', `insert into users (id, username, name, role) values ('${U.T3}','dup','x','teacher')`, denied);

@@ -438,22 +438,47 @@ function deleteEvidence(id) {
 
 /* ---------- بيانات الملف ---------- */
 
+/* select: قائمة ثابتة. other: يضاف خيار «أخرى» لكتابة قيمة غير موجودة. القوائم في lists.js. */
+var OTHER = '__other__';
 var PROFILE_FIELDS = [
-  { key: 'ownerType', label: 'صفة صاحب الملف', select: OWNER_TYPES },
-  { key: 'term', label: 'الفترة', select: TERMS },
+  { key: 'ownerType', label: 'صفة صاحب الملف', select: function () { return OWNER_TYPES; } },
+  { key: 'term', label: 'الفصل الدراسي', select: function () { return TERMS; } },
   { key: 'ownerName', label: 'اسم صاحب الملف' },
-  { key: 'subject', label: 'المادة أو التخصص' },
-  { key: 'stage', label: 'المرحلة والصفوف' },
-  { key: 'school', label: 'المدرسة' },
-  { key: 'eduOffice', label: 'إدارة التعليم أو المكتب' },
+  { key: 'subject', label: 'المادة أو التخصص', select: function () { return LIST_SUBJECTS; }, other: true },
+  { key: 'stage', label: 'المرحلة', select: function () { return LIST_STAGES; } },
+  { key: 'school', label: 'المدرسة', select: function () { return S.schools || [SCHOOL]; }, other: true },
+  { key: 'eduOffice', label: 'إدارة التعليم', select: function () { return LIST_EDU_OFFICES; }, other: true },
   { key: 'principalName', label: 'اسم مدير المدرسة أو مديرتها' },
   { key: 'jobNo', label: 'الرقم الوظيفي (اختياري)' },
-  { key: 'year', label: 'العام الدراسي' }
+  { key: 'year', label: 'العام الدراسي (هـ)', select: function () { return LIST_YEARS; } }
 ];
 
+/** حقل قائمة منسدلة، ومعه حقل نصي يظهر عند اختيار «أخرى». القيمة القديمة غير الموجودة في القائمة لا تضيع. */
+function selectFieldHTML(f, value, dis) {
+  var opts = f.select();
+  var known = !value || opts.indexOf(value) !== -1;
+  var isOther = !known && f.other;
+  var list = known || f.other ? opts : opts.concat([value]);
+  var html = '<select name="' + f.key + '" data-other="' + (f.other ? '1' : '0') + '"' + dis + '>' +
+    '<option value=""' + (value ? '' : ' selected') + '>اختر…</option>' +
+    list.map(function (o) { return '<option value="' + esc(o) + '"' + (o === value ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') +
+    (f.other ? '<option value="' + OTHER + '"' + (isOther ? ' selected' : '') + '>أخرى (أكتبها)</option>' : '') +
+    '</select>';
+  if (f.other) {
+    html += '<input class="other-input" name="' + f.key + '__other" maxlength="150" placeholder="اكتب ' + esc(f.label) + '" value="' + (isOther ? esc(value) : '') + '"' + (isOther ? '' : ' hidden') + dis + '>';
+  }
+  return html;
+}
+
 function loadProfileView() {
-  return call('getProfile', [S.token, S.targetId]).then(function (p) {
-    S.profile = p;
+  return Promise.all([
+    call('getProfile', [S.token, S.targetId]),
+    call('schoolNames').catch(function () { return []; })
+  ]).then(function (r) {
+    S.profile = r[0];
+    var schools = (r[1] || []).slice();
+    if (schools.indexOf(SCHOOL) === -1) schools.unshift(SCHOOL);
+    S.schools = schools;
     renderProfile();
     loadThumbs();
   }).catch(handleErr);
@@ -484,12 +509,9 @@ function renderProfile() {
   }
   var dis = can ? '' : ' disabled';
   var fields = PROFILE_FIELDS.map(function (f) {
-    var val = esc(pr[f.key]);
     var input = f.select
-      ? '<select name="' + f.key + '"' + dis + '>' + f.select.map(function (o) {
-          return '<option value="' + esc(o) + '"' + (o === pr[f.key] ? ' selected' : '') + '>' + esc(o) + '</option>';
-        }).join('') + '</select>'
-      : '<input name="' + f.key + '" value="' + val + '" maxlength="150"' + dis + '>';
+      ? selectFieldHTML(f, pr[f.key] || '', dis)
+      : '<input name="' + f.key + '" value="' + esc(pr[f.key]) + '" maxlength="150"' + dis + '>';
     return '<label>' + esc(f.label) + input + '</label>';
   }).join('');
   var msg = '<label class="wide">رسالة المعلم<textarea name="message" rows="4" maxlength="1000"' + dis + '>' + esc(pr.message) + '</textarea></label>';
@@ -765,7 +787,9 @@ function docHTML(f, p, imgs) {
     '<section class="a4 a4-last">' +
     '<div class="a4-body">' + (pr.message ? '<h3 class="a4-title">رسالة المعلم</h3><p class="doc-msg">' + esc(pr.message) + '</p>' : '') + '</div>' +
     '<div class="doc-end"><section class="doc-sign"><div><span class="muted">توقيع صاحب الملف</span>' + (imgs.ownerSig ? '<img src="' + imgs.ownerSig + '" alt="">' : '<div class="sig-empty"></div>') + '<strong>' + esc(pr.ownerName) + '</strong></div>' +
-    '<div><span class="muted">توقيع مدير المدرسة والختم</span><div class="doc-sig-row">' + (imgs.principalSig ? '<img src="' + imgs.principalSig + '" alt="">' : '<div class="sig-empty"></div>') + (imgs.stamp ? '<img class="doc-stamp" src="' + imgs.stamp + '" alt="">' : '') + '</div><strong>' + esc(pr.principalName) + '</strong></div></section>' +
+    // الختم في المنتصف بين التوقيعين، وفوقه كلمة «الختم».
+    '<div class="doc-stamp-col"><span class="muted">الختم</span>' + (imgs.stamp ? '<img class="doc-stamp" src="' + imgs.stamp + '" alt="ختم المدرسة">' : '<div class="stamp-empty"></div>') + '</div>' +
+    '<div><span class="muted">توقيع مدير المدرسة</span>' + (imgs.principalSig ? '<img src="' + imgs.principalSig + '" alt="">' : '<div class="sig-empty"></div>') + '<strong>' + esc(pr.principalName) + '</strong></div></section>' +
     '<footer class="doc-foot" style="background-image:url(assets/footer.png)"></footer></div>' +
     '</section>' +
     '</div></div>';
@@ -1186,6 +1210,16 @@ document.addEventListener('input', function (e) {
   if (e.target.classList && e.target.classList.contains('grade-input')) scheduleGrade(e.target);
 });
 
+// إظهار حقل الكتابة عند اختيار «أخرى» في القوائم المنسدلة.
+document.addEventListener('change', function (e) {
+  var sel = e.target;
+  if (sel.tagName !== 'SELECT' || sel.dataset.other !== '1') return;
+  var other = sel.form && sel.form.querySelector('[name="' + sel.name + '__other"]');
+  if (!other) return;
+  other.hidden = sel.value !== OTHER;
+  if (!other.hidden) other.focus();
+});
+
 document.addEventListener('submit', function (e) {
   var form = e.target;
   var action = form.dataset.action;
@@ -1283,7 +1317,11 @@ document.addEventListener('submit', function (e) {
 
   if (action === 'profile') {
     var data = {};
-    PROFILE_FIELDS.forEach(function (f) { data[f.key] = val(f.key); });
+    PROFILE_FIELDS.forEach(function (f) {
+      data[f.key] = val(f.key) === OTHER ? val(f.key + '__other') : val(f.key);
+    });
+    var missing = PROFILE_FIELDS.filter(function (f) { return f.other && val(f.key) === OTHER && !val(f.key + '__other'); })[0];
+    if (missing) return toast('اكتب ' + missing.label + ' في الحقل الظاهر تحت «أخرى».', 'err');
     data.message = raw('message').trim();
     return call('saveProfile', [S.token, data]).then(function () {
       toast('تم حفظ بيانات الملف.');

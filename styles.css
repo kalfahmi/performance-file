@@ -149,9 +149,11 @@ table.dt thead th { background: var(--navy); color: #fff; font-weight: 600; }
 .doc-msg { margin: 0; border: 1px solid #D5DEE4; border-radius: 8px; padding: 10px 12px; background: var(--soft); white-space: pre-wrap; font-size: 14px; }
 /* الورقة الختامية: التوقيعات والختم ثم التذييل ملاصقًا لأسفل الورقة. */
 .doc-end { margin-top: auto; display: flex; flex-direction: column; }
-.doc-sign { margin: 18px 28px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; text-align: center; }
+.doc-sign { margin: 18px 28px 12px; display: grid; grid-template-columns: 1fr auto 1fr; gap: 24px; align-items: start; text-align: center; }
+.doc-stamp-col { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 110px; }
+.stamp-empty { width: 96px; height: 96px; }
 .doc-sign > div { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.doc-sign img, .sig-empty { height: 70px; width: 70%; object-fit: contain; }
+.doc-sign > div:not(.doc-stamp-col) img, .sig-empty { height: 70px; width: 80%; object-fit: contain; }
 .sig-empty { border-bottom: 1px dashed #C5D2DA; }
 .doc-foot { width: 100%; aspect-ratio: 1696 / 208; background-size: 100% 100%; background-repeat: no-repeat; }
 
@@ -224,3 +226,4 @@ table.dt thead th { background: var(--navy); color: #fff; font-weight: 600; }
 .msg.unread { border-color: var(--copper); background: var(--peach); }
 .msg-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .msg p { margin: 8px 0 0; white-space: pre-wrap; }
+.other-input { margin-top: 6px; }
