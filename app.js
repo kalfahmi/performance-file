@@ -15,7 +15,7 @@ var MIME = {
   xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
 };
-var OWNER_TYPES = ['معلم', 'معلمة', 'معلم أول', 'معلمة أولى'];
+var OWNER_TYPES = ['معلم', 'وكيل مدرسة', 'موجه طلابي', 'مدير مدرسة'];
 var TERMS = ['الفصل الدراسي الأول', 'الفصل الدراسي الثاني'];
 var PROFILE_IMAGES = [
   { key: 'rightLogo', label: 'شعار الغلاف الأيمن', sign: false },
@@ -501,11 +501,21 @@ function loadPreview() {
     PROFILE_IMAGES.forEach(function (im, i) {
       imgs[im.key] = r[2][i] ? 'data:' + r[2][i].mime + ';base64,' + r[2][i].base64 : '';
     });
-    main().innerHTML =
-      '<div class="page-head no-print"><h2>معاينة الملف للطباعة</h2>' +
-      '<button class="btn primary" type="button" data-act="print">طباعة / حفظ PDF</button></div>' +
-      '<div class="notice no-print">تُعرض الصفحة بالهوية البصرية للمدرسة. من نافذة الطباعة اختر «حفظ كـ PDF» إن أردت ملفًا.</div>' +
-      docHTML(r[0], r[1], imgs);
+    var evs = [];
+    r[0].elements.forEach(function (el) {
+      el.evidence.forEach(function (x) { if (/^image\//.test(x.mime)) evs.push(x); });
+    });
+    return Promise.all(evs.map(function (x) {
+      return call('getEvidenceFile', [S.token, x.id]).then(function (f) {
+        imgs['ev:' + x.id] = 'data:' + f.mime + ';base64,' + f.base64;
+      });
+    })).then(function () {
+      main().innerHTML =
+        '<div class="page-head no-print"><h2>معاينة الملف للطباعة</h2>' +
+        '<button class="btn primary" type="button" data-act="print">طباعة / حفظ PDF</button></div>' +
+        '<div class="notice no-print">تُعرض الصفحة بالهوية البصرية للمدرسة، ومعها الشواهد. الصور تظهر كاملة، أما الملفات الأخرى (PDF وWord) فيُذكر اسمها. من نافذة الطباعة اختر «حفظ كـ PDF» إن أردت ملفًا.</div>' +
+        docHTML(r[0], r[1], imgs);
+    });
   }).catch(handleErr);
 }
 
@@ -538,11 +548,28 @@ function docHTML(f, p, imgs) {
     '</td><th>عناصر مكتملة</th><td>' + d(complete) + ' / ' + d(11) + '</td></tr><tr><th>الشواهد المضافة</th><td>' + d(s.evidenceTotal) +
     '</td><th>التقدير الذاتي الاسترشادي</th><td>' + pct(s.selfScore) + '</td></tr></table></section>' +
     '<section class="doc-sec"><h3>عناصر الأداء</h3><table class="dt"><thead><tr><th>#</th><th>العنصر</th><th>الوزن</th><th>الشواهد</th><th>الحالة</th><th>التقدير الذاتي</th></tr></thead><tbody>' + rows + '</tbody></table></section>' +
+    '<section class="doc-sec doc-ev-sec"><h3>الشواهد</h3>' + evidenceHTML(f, imgs) + '</section>' +
     (pr.message ? '<section class="doc-sec"><h3>رسالة المعلم</h3><p class="doc-msg">' + esc(pr.message) + '</p></section>' : '') +
     '<section class="doc-sign"><div><span class="muted">توقيع صاحب الملف</span>' + (imgs.ownerSig ? '<img src="' + imgs.ownerSig + '" alt="">' : '<div class="sig-empty"></div>') + '<strong>' + esc(pr.ownerName) + '</strong></div>' +
     '<div><span class="muted">توقيع مدير المدرسة</span>' + (imgs.principalSig ? '<img src="' + imgs.principalSig + '" alt="">' : '<div class="sig-empty"></div>') + '<strong>' + esc(pr.principalName) + '</strong></div></section>' +
     '<footer class="doc-foot" style="background-image:url(assets/footer.png)"></footer>' +
     '</article></div>';
+}
+
+function evidenceHTML(f, imgs) {
+  return f.elements.map(function (el) {
+    var items = el.evidence.map(function (x) {
+      var src = imgs['ev:' + x.id];
+      var body = src
+        ? '<img class="ev-img" src="' + src + '" alt="' + esc(x.title) + '">'
+        : '<div class="ev-file">مرفق: ' + esc(x.fileName) + ' (' + fmtSize(x.size) + ')</div>';
+      return '<div class="ev-card"><div class="ev-meta"><strong>' + esc(x.title) + '</strong>' +
+        '<span class="muted">' + esc(x.fileName) + ' · ' + fmtDate(x.uploadedAt) + '</span></div>' + body + '</div>';
+    }).join('');
+    return '<div class="doc-el"><div class="doc-el-head"><span class="doc-el-no">' + d(el.no) + '</span>' +
+      '<h4>' + esc(el.name) + '</h4><span class="muted">الوزن ' + d(el.weight) + '٪</span></div>' +
+      (items || '<p class="doc-none">لا توجد شواهد لهذا العنصر.</p>') + '</div>';
+  }).join('');
 }
 
 /* ---------- النسخ الاحتياطي ---------- */
