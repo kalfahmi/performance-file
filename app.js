@@ -168,7 +168,7 @@ function renderSetup() {
     '<p class="muted">أول تشغيل للنظام: أنشئ حساب مسؤول النظام. يُنشأ هذا الحساب مرة واحدة فقط، ومنه تُضاف حسابات المعلمين والمديرين.</p>' +
     '<form class="col" data-action="setup">' +
     '<label>الاسم الكامل<input name="name" required></label>' +
-    '<label>اسم الدخول<input name="username" dir="ltr" required pattern="[a-z][a-z0-9._-]{2,29}" title="حروف إنجليزية صغيرة وأرقام، ويبدأ بحرف"></label>' +
+    '<label>اسم الدخول<input name="username" dir="ltr" required></label>' +
     '<label>كلمة المرور<input name="password" type="password" minlength="6" required></label>' +
     '<label>تأكيد كلمة المرور<input name="confirm" type="password" minlength="6" required></label>' +
     '<button class="btn primary block" type="submit">إنشاء الحساب</button>' +
@@ -612,7 +612,7 @@ function renderAccounts() {
     '<section class="card"><h2>إضافة حساب</h2>' +
     '<form class="row" data-action="account">' +
     '<label>الاسم الكامل<input name="name" required></label>' +
-    '<label>اسم الدخول<input name="username" dir="ltr" required pattern="[a-z][a-z0-9._-]{2,29}" title="حروف إنجليزية صغيرة وأرقام، ويبدأ بحرف"></label>' +
+    '<label>اسم الدخول<input name="username" dir="ltr" required></label>' +
     '<label>كلمة المرور الأولية<input name="password" type="password" minlength="6" required></label>' +
     '<label>الصلاحية<select name="role"><option value="teacher">معلم</option><option value="principal">مدير</option><option value="admin">مسؤول النظام</option></select></label>' +
     '<button class="btn primary" type="submit">إنشاء الحساب</button></form>' +
