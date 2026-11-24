@@ -77,6 +77,9 @@ td { padding: 12px 14px; border-bottom: 1px solid #EEF2F5; vertical-align: middl
 .modal[hidden] { display: none; }
 .sheet { background: #fff; padding: 26px; width: min(440px, 100%); border-radius: 16px; display: flex; flex-direction: column; gap: 16px; }
 .auth { max-width: 440px; margin: 48px auto; width: 100%; padding: 28px; border: 1px solid #C3D0D8; border-radius: 18px; box-shadow: 0 2px 4px rgba(23,43,57,.06), 0 12px 32px rgba(23,43,57,.14); }
+.auth-switch { margin: 0; text-align: center; color: var(--muted); }
+button.link { background: none; border: 0; padding: 0; color: var(--copper-dark); font-weight: 700; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+button.link:focus-visible { outline: 2px solid var(--copper); outline-offset: 2px; border-radius: 4px; }
 .error-box { padding: 18px; background: #fff; border: 1px solid var(--red); color: var(--red); border-radius: 12px; }
 .empty { padding: 24px; text-align: center; color: var(--muted); border: 1px dashed #C5D2DA; border-radius: 12px; }
 .print-only { display: none; }

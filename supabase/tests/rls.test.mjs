@@ -140,6 +140,39 @@ await expect('مسؤول النظام يرى ملخصات كل المعلمين'
 await expect('الحساب الموقوف لا يرى ملخصًا', 'T2', `select count(*) n from file_summaries()`, count(0));
 await expect('الزائر لا يستدعي الملخصات', 'anon', `select count(*) n from file_summaries()`, denied);
 
+// ملف المدير: توقيعه وختمه (migration 0003)
+await expect('مسؤول النظام ينشئ ملف المدير', 'A', `insert into profiles (user_id, owner_name) values ('${U.P}','مدير')`, r => !r.error);
+await expect('المدير يقرأ ملفه', 'P', `select count(*) n from profiles where user_id='${U.P}'`, count(1));
+await expect('المدير يضع توقيعه وختمه في ملفه', 'P', `update profiles set owner_sig_path='${U.P}/owner_sig.png', stamp_path='${U.P}/stamp.png' where user_id='${U.P}'`, r => r.affected === 1);
+await expect('المدير لا يضع الختم في ملف المعلم', 'P', `update profiles set stamp_path='${U.T1}/stamp.png' where user_id='${U.T1}'`, none);
+await expect('المعلم لا يقرأ ملف المدير', 'T1', `select count(*) n from profiles where user_id='${U.P}'`, count(0));
+await expect('المدير يرفع ختمه', 'P', `insert into storage.objects (bucket_id, name) values ('images','${U.P}/stamp.png')`, r => !r.error);
+await expect('المدير لا يرفع في مجلد المعلم', 'P', `insert into storage.objects (bucket_id, name) values ('images','${U.T1}/stamp.png')`, denied);
+await expect('المعلم لا يرى ختم المدير', 'T1', `select count(*) n from storage.objects where name='${U.P}/stamp.png'`, count(0));
+await expect('مسؤول النظام يرفع توقيع معلم', 'A', `insert into storage.objects (bucket_id, name) values ('images','${U.T1}/owner_sig.jpg')`, r => !r.error);
+await expect('المدير يعرف أنه مدير معلمه', 'P', `select count(*) n from (select principal_of('${U.T1}') p) x where p='${U.P}'`, count(1));
+await expect('المعلم لا يعرف مديره من الدالة', 'T1', `select count(*) n from (select principal_of('${U.T1}') p) x where p is not null`, count(0));
+
+// الرسائل
+await expect('المدير يرسل ملاحظة لمعلمه', 'P', `insert into messages (from_id, to_id, body) values ('${U.P}','${U.T1}','أحسنت')`, r => !r.error);
+await expect('المدير لا يرسل لمعلم غير مسند', 'P', `insert into messages (from_id, to_id, body) values ('${U.P}','${U.T2}','x')`, denied);
+await expect('لا يرسل باسم غيره', 'P', `insert into messages (from_id, to_id, body) values ('${U.A}','${U.T1}','x')`, denied);
+await expect('المعلم لا يرسل للمدير', 'T1', `insert into messages (from_id, to_id, body) values ('${U.T1}','${U.P}','x')`, denied);
+await expect('المعلم يقرأ رسائله', 'T1', `select count(*) n from messages`, count(1));
+await expect('مدير آخر لا يرى الرسالة', 'P2', `select count(*) n from messages`, count(0));
+await expect('المعلم يعلّم الرسالة مقروءة', 'T1', `update messages set read_at=now() where to_id='${U.T1}'`, r => r.affected === 1);
+await expect('المعلم لا يغيّر نص الرسالة', 'T1', `update messages set body='تعديل' where to_id='${U.T1}'`, denied);
+await expect('مسؤول النظام يرسل لأي معلم', 'A', `insert into messages (from_id, to_id, body) values ('${U.A}','${U.T1}','تنبيه')`, r => !r.error);
+
+// الدرجة المستحقة من ٥
+await expect('المدير يضع درجة معلمه', 'P', `insert into grades (teacher_id, grade, principal_id) values ('${U.T1}', 4.5, '${U.P}')`, r => !r.error);
+await expect('المدير يعدّل الدرجة', 'P', `update grades set grade=4 where teacher_id='${U.T1}'`, r => r.affected === 1);
+await expect('الدرجة فوق ٥ مرفوضة', 'P', `update grades set grade=6 where teacher_id='${U.T1}'`, denied);
+await expect('المدير لا يضع درجة لمعلم غير مسند', 'P', `insert into grades (teacher_id, grade, principal_id) values ('${U.T2}', 3, '${U.P}')`, denied);
+await expect('المعلم لا يرى درجته', 'T1', `select count(*) n from grades`, count(0));
+await expect('مدير آخر لا يرى الدرجة', 'P2', `select count(*) n from grades where teacher_id='${U.T1}'`, count(0));
+await expect('مسؤول النظام يرى الدرجات', 'A', `select count(*) n from grades`, count(1));
+
 // دوال الخادم (service_role)
 await expect('دوال الخادم تعدّ الحسابات', 'service', 'select count(*) n from users', count(6));
 await expect('اسم مستخدم مكرر مرفوض', 'service', `insert into users (id, username, name, role) values ('${U.T3}','dup','x','teacher')`, denied);

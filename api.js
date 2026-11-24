@@ -140,6 +140,13 @@ API.setupAdmin = function (name, username, password) {
   return sbFunction('setup-admin', { name: name, username: username, password: password });
 };
 
+/** التسجيل الذاتي: ينشئ حساب معلم ثم يسجّل دخوله. */
+API.register = function (name, username, password) {
+  return sbFunction('register', { name: name, username: username, password: password }).then(function () {
+    return API.login(username, password);
+  });
+};
+
 API.login = function (username, password) {
   return sbUsernameToEmail(username).then(function (email) {
     return sb.auth.signInWithPassword({ email: email, password: password });

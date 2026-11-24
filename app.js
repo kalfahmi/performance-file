@@ -184,6 +184,23 @@ function renderLogin() {
     '<button class="btn primary block" type="submit">دخول</button>' +
     '</form>' +
     '<p class="muted">إذا نسيت كلمة المرور فاطلبها من مسؤول النظام.</p>' +
+    '<p class="auth-switch">ليس لديك حساب؟ <button class="link" type="button" data-act="show-register">تسجيل جديد</button></p>' +
+    '</section>';
+}
+
+function renderRegister() {
+  document.getElementById('app').innerHTML =
+    '<section class="card auth">' +
+    '<div class="brand"><h1>تسجيل جديد</h1><span class="muted">' + esc(SCHOOL) + '</span></div>' +
+    '<p class="muted">يُنشأ لك حساب معلم، وتدخل به مباشرة بعد التسجيل.</p>' +
+    '<form class="col" data-action="register">' +
+    '<label>الاسم الكامل<input name="name" minlength="2" maxlength="120" autocomplete="name" required></label>' +
+    '<label>اسم الدخول<input name="username" dir="ltr" minlength="3" maxlength="60" pattern="\\S+" title="بلا مسافات" autocomplete="username" required></label>' +
+    '<label>كلمة المرور<input name="password" type="password" minlength="8" maxlength="72" autocomplete="new-password" required></label>' +
+    '<label>تأكيد كلمة المرور<input name="confirm" type="password" minlength="8" maxlength="72" autocomplete="new-password" required></label>' +
+    '<button class="btn primary block" type="submit">إنشاء الحساب والدخول</button>' +
+    '</form>' +
+    '<p class="auth-switch">لديك حساب؟ <button class="link" type="button" data-act="show-login">تسجيل الدخول</button></p>' +
     '</section>';
 }
 
@@ -1017,6 +1034,8 @@ document.addEventListener('click', function (e) {
   if (a === 'open') return go('elements', t.dataset.id);
   if (a === 'logout') return logout();
   if (a === 'pwd') return openPasswordModal();
+  if (a === 'show-register') return renderRegister();
+  if (a === 'show-login') return renderLogin();
   if (a === 'close') return closeModal();
   if (a === 'confirm-yes') {
     var onYes = S.onConfirm;
@@ -1081,6 +1100,24 @@ document.addEventListener('submit', function (e) {
       toast('تم إنشاء حساب المسؤول. سجّل الدخول الآن.');
       renderLogin();
     }).catch(handleErr);
+  }
+
+  if (action === 'register') {
+    if (raw('password') !== raw('confirm')) return toast('كلمتا المرور غير متطابقتين.', 'err');
+    var regBtn = form.querySelector('button[type="submit"]');
+    regBtn.disabled = true;
+    regBtn.textContent = 'جارٍ إنشاء الحساب…';
+    return call('register', [val('name'), val('username'), raw('password')]).then(function (r) {
+      S.token = r.token;
+      S.me = r.user;
+      S.prefetch = r.file;
+      toast('تم إنشاء حسابك. أهلًا بك.');
+      enter();
+    }).catch(function (err) {
+      regBtn.disabled = false;
+      regBtn.textContent = 'إنشاء الحساب والدخول';
+      handleErr(err);
+    });
   }
 
   if (action === 'login') {
