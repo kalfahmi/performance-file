@@ -83,6 +83,17 @@ function closeModal() {
   var m = document.getElementById('modal');
   if (m) m.hidden = true;
   S.sig = null;
+  S.onConfirm = null;
+}
+
+/** نافذة تأكيد داخل التطبيق بدل confirm() الذي تمنعه بعض المتصفحات والتطبيقات المثبتة. */
+function askConfirm(message, yesLabel, onYes, danger) {
+  openModal('<h2>تأكيد</h2><p>' + esc(message) + '</p>' +
+    '<div class="form-actions"><button class="btn" type="button" data-act="close">إلغاء</button>' +
+    '<button class="btn ' + (danger ? 'danger' : 'primary') + '" type="button" data-act="confirm-yes">' + esc(yesLabel) + '</button></div>');
+  S.onConfirm = onYes;
+  var yes = document.querySelector('#modal [data-act="confirm-yes"]');
+  if (yes) yes.focus();
 }
 
 function handleErr(err) {
@@ -378,12 +389,13 @@ function viewEvidence(id) {
 }
 
 function deleteEvidence(id) {
-  if (!confirm('حذف هذا الشاهد نهائيًا؟')) return;
-  return call('deleteEvidence', [S.token, id]).then(function () {
-    toast('تم حذف الشاهد.');
-    closeModal();
-    return loadElements();
-  }).catch(handleErr);
+  askConfirm('حذف هذا الشاهد نهائيًا؟ لا يمكن التراجع عن الحذف.', 'حذف الشاهد', function () {
+    return call('deleteEvidence', [S.token, id]).then(function () {
+      toast('تم حذف الشاهد.');
+      closeModal();
+      return loadElements();
+    }).catch(handleErr);
+  }, true);
 }
 
 /* ---------- بيانات الملف ---------- */
@@ -525,20 +537,28 @@ function saveSignature(slot) {
 /* ---------- إجراءات الملف ---------- */
 
 function clearLink(no) {
-  if (!confirm('حذف رابط مجلد الشواهد لهذا العنصر؟')) return;
-  return call('setElementLink', [S.token, no, '']).then(function () {
-    toast('تم حذف الرابط.');
-    closeModal();
-    return loadElements();
-  }).catch(handleErr);
+  askConfirm('حذف رابط مجلد الشواهد لهذا العنصر؟', 'حذف الرابط', function () {
+    return call('setElementLink', [S.token, no, '']).then(function () {
+      toast('تم حذف الرابط.');
+      closeModal();
+      return loadElements();
+    }).catch(handleErr);
+  }, true);
 }
 
 function submitPrincipal() {
-  if (!confirm('إرسال الملف إلى المدير؟ يظهر الملف لحساب المدير بعد الإرسال.')) return;
-  return call('submitToPrincipal', [S.token]).then(function () {
-    toast('تم إرسال الملف إلى المدير.');
-    return go('profile', S.targetId);
-  }).catch(handleErr);
+  askConfirm('إرسال الملف إلى المدير؟ يظهر الملف لحساب المدير بعد الإرسال.', 'إرسال الملف', function () {
+    var btn = document.querySelector('#modal [data-act="confirm-yes"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'جارٍ الإرسال…'; }
+    return call('submitToPrincipal', [S.token]).then(function () {
+      closeModal();
+      toast('تم إرسال الملف إلى المدير.');
+      return go('profile', S.targetId);
+    }).catch(function (err) {
+      closeModal();
+      handleErr(err);
+    });
+  });
 }
 
 /** يعرض صور التواقيع والختم الموجودة في بطاقاتها. */
@@ -897,6 +917,11 @@ document.addEventListener('click', function (e) {
   if (a === 'logout') return logout();
   if (a === 'pwd') return openPasswordModal();
   if (a === 'close') return closeModal();
+  if (a === 'confirm-yes') {
+    var onYes = S.onConfirm;
+    S.onConfirm = null;
+    return onYes ? onYes() : closeModal();
+  }
   if (a === 'print') return window.print();
   if (a === 'rate') return readRatingAndSave(Number(t.dataset.element), Number(t.dataset.value));
   if (a === 'view') return viewEvidence(t.dataset.id);
