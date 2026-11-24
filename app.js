@@ -504,7 +504,9 @@ var PROFILE_FIELDS = [
   { key: 'stage', label: 'المرحلة', select: function () { return LIST_STAGES; } },
   { key: 'school', label: 'المدرسة', select: function () { return S.schools || [SCHOOL]; }, other: true },
   { key: 'eduOffice', label: 'إدارة التعليم', select: function () { return LIST_EDU_OFFICES; }, other: true },
-  { key: 'principalName', label: 'اسم مدير المدرسة أو مديرتها' },
+  // في ملف المدير: المسؤول المباشر (صفته واسمه) بدل «مدير المدرسة».
+  { key: 'reviewerTitle', label: 'المسؤول المباشر (الصفة)', principalOnly: true, placeholder: 'مثل: مدير مكتب التعليم' },
+  { key: 'principalName', label: 'اسم مدير المدرسة أو مديرتها', principalLabel: 'اسم المسؤول المباشر' },
   { key: 'jobNo', label: 'الرقم الوظيفي (اختياري)' },
   { key: 'year', label: 'العام الدراسي (هـ)', select: function () { return LIST_YEARS; } }
 ];
@@ -553,7 +555,7 @@ function schoolEntry(name) {
  * يُستدعى عند تغيير المدرسة وبعد عرض النموذج.
  */
 function applySchool(form) {
-  if (!form || !form.principalName) return;
+  if (!form || !form.principalName || form.dataset.owner === 'principal') return;
   var sel = form.querySelector('select[name="school"]');
   var school = sel && sel.value === OTHER ? '' : (sel ? sel.value : '');
   var entry = schoolEntry(school);
@@ -596,14 +598,14 @@ function renderProfile() {
   var canImg = can;
   var isPrincipal = p.owner.role === 'principal';
   var dis = can ? '' : ' disabled';
-  var fields = PROFILE_FIELDS.map(function (f) {
+  var fields = PROFILE_FIELDS.filter(function (f) { return !f.principalOnly || isPrincipal; }).map(function (f) {
     var input = f.select
       ? selectFieldHTML(f, pr[f.key] || '', dis)
-      : '<input name="' + f.key + '" value="' + esc(pr[f.key]) + '" maxlength="150"' + dis + '>';
-    return '<label>' + esc(f.label) + input + '</label>';
+      : '<input name="' + f.key + '" value="' + esc(pr[f.key]) + '" maxlength="150"' + (f.placeholder ? ' placeholder="' + esc(f.placeholder) + '"' : '') + dis + '>';
+    return '<label>' + esc(isPrincipal && f.principalLabel ? f.principalLabel : f.label) + input + '</label>';
   }).join('');
   var msg = '<label class="wide">رسالة صاحب الملف<textarea name="message" rows="4" maxlength="1000"' + dis + '>' + esc(pr.message) + '</textarea></label>';
-  var form = '<form class="pform" data-action="profile">' + fields + msg +
+  var form = '<form class="pform" data-action="profile" data-owner="' + (isPrincipal ? 'principal' : '') + '">' + fields + msg +
     (can ? '<div class="form-actions"><button class="btn primary" type="submit">حفظ بيانات الملف</button></div>' : '') + '</form>';
   var imgs = imgCardsHTML(isPrincipal ? 'principal' : 'teacher', p.owner.id, p.images, canImg);
   var submit = (can && S.me.role === 'teacher')
@@ -818,13 +820,8 @@ function loadPreview() {
     // توقيع المدير وختمه: لمسؤول النظام والمدير فقط، ولا يُطلبان أصلًا في حساب المعلم.
     S.me.role === 'teacher' ? Promise.resolve({}) : call('getPrincipalImages', [S.token, S.targetId]).catch(function () { return {}; })
   ]).then(function (r) {
-    // ملف المدير نفسه: ختمه هو في المنتصف.
-    if (r[1].owner.role !== 'principal') return r;
-    return cached('img', S.targetId + ':stamp', 'getProfileImage', [S.token, S.targetId, 'stamp']).then(function (st) {
-      r[3] = { stamp: st };
-      return r;
-    });
-  }).then(function (r) {
+    // ملف المدير نفسه: مسؤوله المباشر خارج المدرسة، فلا ختم ولا توقيع مدير مدرسة.
+    if (r[1].owner.role === 'principal') r[3] = {};
     var src = function (x) { return x ? 'data:' + x.mime + ';base64,' + x.base64 : ''; };
     var imgs = { ownerSig: src(r[2]), principalSig: src(r[3].sig), stamp: src(r[3].stamp) };
     var evs = [];
@@ -862,11 +859,13 @@ function docHTML(f, p, imgs) {
     return '<tr><td>' + d(el.no) + '</td><td>' + esc(el.name) + '</td><td>' + d(el.weight) + '٪</td><td>' + d(s.counts[i]) +
       '</td><td>' + statusOf(s.counts[i])[1] + '</td><td>' + RATING_LABEL[el.rating] + '</td></tr>';
   }).join('');
+  var isPrincipal = p.owner && p.owner.role === 'principal';
+  var reviewer = [pr.reviewerTitle, pr.principalName].filter(Boolean).join(': ');
   var info = [
     ['صفة صاحب الملف', pr.ownerType], ['الفترة', pr.term],
     ['اسم صاحب الملف', pr.ownerName], ['المادة أو التخصص', pr.subject],
     ['المرحلة والصفوف', pr.stage], ['المدرسة', pr.school],
-    ['إدارة التعليم أو المكتب', pr.eduOffice], ['اسم مدير المدرسة أو مديرتها', pr.principalName],
+    ['إدارة التعليم أو المكتب', pr.eduOffice], isPrincipal ? ['المسؤول المباشر', reviewer] : ['اسم مدير المدرسة أو مديرتها', pr.principalName],
     ['الرقم الوظيفي', pr.jobNo], ['العام الدراسي', pr.year]
   ];
   var kv = '';
@@ -888,10 +887,13 @@ function docHTML(f, p, imgs) {
     '<div class="doc-flow">' + evidenceHTML(f, imgs) + '</div>' +
     '<section class="a4 a4-last">' +
     '<div class="a4-body">' + (pr.message ? '<h3 class="a4-title">رسالة صاحب الملف</h3><p class="doc-msg">' + esc(pr.message) + '</p>' : '') + '</div>' +
-    '<div class="doc-end"><section class="doc-sign"><div><span class="muted">توقيع صاحب الملف</span>' + (imgs.ownerSig ? '<img src="' + imgs.ownerSig + '" alt="">' : '<div class="sig-empty"></div>') + '<strong>' + esc(pr.ownerName) + '</strong></div>' +
-    // الختم في المنتصف بين التوقيعين، وفوقه كلمة «الختم».
-    '<div class="doc-stamp-col"><span class="muted">الختم</span>' + (imgs.stamp ? '<img class="doc-stamp" src="' + imgs.stamp + '" alt="ختم المدرسة">' : '<div class="stamp-empty"></div>') + '</div>' +
-    '<div><span class="muted">توقيع مدير المدرسة</span>' + (imgs.principalSig ? '<img src="' + imgs.principalSig + '" alt="">' : '<div class="sig-empty"></div>') + '<strong>' + esc(pr.principalName) + '</strong></div></section>' +
+    '<div class="doc-end"><section class="doc-sign' + (isPrincipal ? ' two' : '') + '"><div><span class="muted">توقيع صاحب الملف</span>' + (imgs.ownerSig ? '<img src="' + imgs.ownerSig + '" alt="">' : '<div class="sig-empty"></div>') + '<strong>' + esc(pr.ownerName) + '</strong></div>' +
+    (isPrincipal
+      // ملف المدير: توقيع مسؤوله المباشر، بلا ختم.
+      ? '<div><span class="muted">توقيع ' + esc(pr.reviewerTitle || 'المسؤول المباشر') + '</span><div class="sig-empty"></div><strong>' + esc(pr.principalName) + '</strong></div></section>'
+      // الختم في المنتصف بين التوقيعين، وفوقه كلمة «الختم».
+      : '<div class="doc-stamp-col"><span class="muted">الختم</span>' + (imgs.stamp ? '<img class="doc-stamp" src="' + imgs.stamp + '" alt="ختم المدرسة">' : '<div class="stamp-empty"></div>') + '</div>' +
+        '<div><span class="muted">توقيع مدير المدرسة</span>' + (imgs.principalSig ? '<img src="' + imgs.principalSig + '" alt="">' : '<div class="sig-empty"></div>') + '<strong>' + esc(pr.principalName) + '</strong></div></section>') +
     '<footer class="doc-foot" style="background-image:url(assets/footer.png)"></footer></div>' +
     '</section>' +
     '</div></div>';
@@ -1466,7 +1468,7 @@ document.addEventListener('submit', function (e) {
     var data = {};
     // نموذج المدير يحوي بعض الحقول فقط (data-fields)، فلا تُمسح الحقول الأخرى.
     var only = form.dataset.fields ? form.dataset.fields.split(',') : null;
-    var fieldsIn = PROFILE_FIELDS.filter(function (f) { return !only || only.indexOf(f.key) !== -1; });
+    var fieldsIn = PROFILE_FIELDS.filter(function (f) { return (!only || only.indexOf(f.key) !== -1) && form.elements[f.key]; });
     fieldsIn.forEach(function (f) {
       data[f.key] = val(f.key) === OTHER ? val(f.key + '__other') : val(f.key);
     });
@@ -1474,7 +1476,7 @@ document.addEventListener('submit', function (e) {
     if (missing) return toast('اكتب ' + missing.label + ' في الحقل الظاهر تحت «أخرى».', 'err');
     if (!only) data.message = raw('message').trim();
     // اسم المدير من الدليل إن كانت المدرسة مسجلة (ولو عُدّل الحقل بطريقة ما).
-    var entry = !only && schoolEntry(data.school);
+    var entry = !only && form.dataset.owner !== 'principal' && schoolEntry(data.school);
     if (entry) data.principalName = entry.principalName;
     return call('saveProfile', [S.token, data, S.targetId]).then(function () {
       toast('تم حفظ بيانات الملف.');

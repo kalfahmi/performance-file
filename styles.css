@@ -231,3 +231,4 @@ input[readonly] { background: var(--soft); color: var(--ink); cursor: not-allowe
 /* جدول العناصر: الأعمدة القصيرة في سطر واحد، والاسم وحده يلتف. يبقى ١٩ عنصرًا في ورقة واحدة. */
 table.dt th, table.dt td:not(:nth-child(2)) { white-space: nowrap; }
 table.dt td:nth-child(2) { width: 100%; }
+.doc-sign.two { grid-template-columns: 1fr 1fr; }

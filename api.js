@@ -21,7 +21,7 @@ var IMAGE_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' 
 
 var PROFILE_MAP = {
   ownerType: 'owner_type', ownerName: 'owner_name', stage: 'stage', subject: 'subject', school: 'school',
-  principalName: 'principal_name', eduOffice: 'edu_office', jobNo: 'job_no', year: 'year', term: 'term', message: 'message'
+  principalName: 'principal_name', reviewerTitle: 'reviewer_title', eduOffice: 'edu_office', jobNo: 'job_no', year: 'year', term: 'term', message: 'message'
 };
 
 var SESSION_EXPIRED = 'انتهت الجلسة، سجّل الدخول من جديد.';

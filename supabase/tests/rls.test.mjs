@@ -206,6 +206,10 @@ await expect('المدير يقيّم نفسه', 'P', `insert into ratings (user
 await expect('المدير لا يضيف شاهدًا لمعلمه', 'P', `insert into evidence (user_id, element, title, file_path, file_name, mime, size) values ('${U.T1}',1,'x','${U.T1}/px','x','a',1)`, denied);
 await expect('المعلم لا يرى شواهد المدير', 'T1', `select count(*) n from evidence where user_id='${U.P}'`, count(0));
 
+// المسؤول المباشر في ملف المدير (migration 0007)
+await expect('المدير يكتب مسؤوله المباشر واسمه', 'P', `update profiles set reviewer_title='مدير مكتب التعليم', principal_name='أ. المسؤول' where user_id='${U.P}'`, r => r.affected === 1);
+await expect('المعلم لا يرى مسؤول المدير', 'T1', `select count(*) n from profiles where user_id='${U.P}'`, count(0));
+
 // دوال الخادم (service_role)
 await expect('دوال الخادم تعدّ الحسابات', 'service', 'select count(*) n from users', count(6));
 await expect('اسم مستخدم مكرر مرفوض', 'service', `insert into users (id, username, name, role) values ('${U.T3}','dup','x','teacher')`, denied);
