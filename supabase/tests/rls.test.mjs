@@ -199,6 +199,13 @@ await expect('ملخص الموجه ١٣ عنصرًا', 'T1', `select count(*) n
 await expect('العودة إلى معلم', 'T1', `update profiles set owner_type='معلم' where user_id='${U.T1}'`, r => r.affected === 1);
 await expect('ملخص المعلم ١١ عنصرًا', 'T1', `select count(*) n from file_summaries()`, count(11));
 
+// ملف أداء المدير نفسه
+await expect('المدير يضيف شاهدًا لملفه', 'P', `insert into evidence (user_id, element, title, file_path, file_name, mime, size) values ('${U.P}',13,'خطة','${U.P}/p13','x','a',1)`, r => !r.error);
+await expect('المدير يرفع ملف شاهده', 'P', `insert into storage.objects (bucket_id, name) values ('evidence','${U.P}/p13')`, r => !r.error);
+await expect('المدير يقيّم نفسه', 'P', `insert into ratings (user_id, element, rating) values ('${U.P}',13,4)`, r => !r.error);
+await expect('المدير لا يضيف شاهدًا لمعلمه', 'P', `insert into evidence (user_id, element, title, file_path, file_name, mime, size) values ('${U.T1}',1,'x','${U.T1}/px','x','a',1)`, denied);
+await expect('المعلم لا يرى شواهد المدير', 'T1', `select count(*) n from evidence where user_id='${U.P}'`, count(0));
+
 // دوال الخادم (service_role)
 await expect('دوال الخادم تعدّ الحسابات', 'service', 'select count(*) n from users', count(6));
 await expect('اسم مستخدم مكرر مرفوض', 'service', `insert into users (id, username, name, role) values ('${U.T3}','dup','x','teacher')`, denied);

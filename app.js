@@ -286,11 +286,13 @@ function shell() {
 function navItems() {
   if (!S.inFile) {
     if (S.me.role === 'admin') return [['teachers', 'المعلمون'], ['accounts', 'الحسابات'], ['backup', 'النسخ الاحتياطي']];
-    return [['teachers', 'المعلمون'], ['myfile', 'بيانات الملف']];
+    // المدير: يتابع معلميه، وله ملف أدائه (عناصر «مدير مدرسة»).
+    return [['teachers', 'المعلمون'], ['elements', 'عناصر الأداء'], ['profile', 'بيانات الملف'], ['preview', 'معاينة الملف']];
   }
   var own = S.targetId === S.me.id;
   var list = [];
-  if (!own) list.push(['teachers', 'رجوع إلى المعلمين']);
+  if (!own) list.push(['teachers', 'رجوع إلى ' + (S.me.role === 'admin' ? 'القوائم' : 'المعلمين')]);
+  else if (S.me.role === 'principal') list.push(['teachers', 'المعلمون']);
   list.push(['elements', 'عناصر الأداء'], ['profile', 'بيانات الملف'], ['preview', 'معاينة الملف']);
   if (own && S.me.role === 'teacher') {
     list.push(['messages', 'رسائل المدير' + (S.unread ? ' <span class="badge" aria-label="' + S.unread + ' غير مقروءة">' + d(S.unread) + '</span>' : '')]);
@@ -592,19 +594,7 @@ function renderProfile() {
   // مسؤول النظام يعدّل بيانات ملف أي حساب.
   var can = p.editable || S.me.role === 'admin';
   var canImg = can;
-  if (p.owner.role === 'principal') {
-    var pdis = can ? '' : ' disabled';
-    var pf = PROFILE_FIELDS.filter(function (f) { return f.key === 'school' || f.key === 'eduOffice'; });
-    main().innerHTML =
-      '<div class="page-head"><h2>' + esc(own ? 'بيانات الملف' : 'بيانات ' + p.owner.name) + '</h2></div>' +
-      '<section class="card"><h3>المدرسة</h3><form class="pform" data-action="profile" data-fields="school,eduOffice">' +
-      pf.map(function (f) { return '<label>' + esc(f.label) + selectFieldHTML(f, pr[f.key] || '', pdis) + '</label>'; }).join('') +
-      (can ? '<div class="form-actions"><button class="btn primary" type="submit">حفظ</button></div>' : '') + '</form>' +
-      '<p class="muted" style="margin:0">عندما يختار المعلم هذه المدرسة في بيانات ملفه، يُكتب اسمك مديرًا لها تلقائيًا، وتُكتب إدارة التعليم.</p></section>' +
-      '<section class="card"><h3>توقيع المدير وختم المدرسة</h3><div class="img-grid">' + imgCardsHTML('principal', p.owner.id, p.images, canImg) + '</div>' +
-      '<p class="muted" style="margin:0">يظهران في ملفات المعلمين المسندين إليك عند معاينتها وطباعتها من حسابك أو من حساب مسؤول النظام، ولا يظهران للمعلم.</p></section>';
-    return;
-  }
+  var isPrincipal = p.owner.role === 'principal';
   var dis = can ? '' : ' disabled';
   var fields = PROFILE_FIELDS.map(function (f) {
     var input = f.select
@@ -612,10 +602,10 @@ function renderProfile() {
       : '<input name="' + f.key + '" value="' + esc(pr[f.key]) + '" maxlength="150"' + dis + '>';
     return '<label>' + esc(f.label) + input + '</label>';
   }).join('');
-  var msg = '<label class="wide">رسالة المعلم<textarea name="message" rows="4" maxlength="1000"' + dis + '>' + esc(pr.message) + '</textarea></label>';
+  var msg = '<label class="wide">رسالة صاحب الملف<textarea name="message" rows="4" maxlength="1000"' + dis + '>' + esc(pr.message) + '</textarea></label>';
   var form = '<form class="pform" data-action="profile">' + fields + msg +
     (can ? '<div class="form-actions"><button class="btn primary" type="submit">حفظ بيانات الملف</button></div>' : '') + '</form>';
-  var imgs = imgCardsHTML('teacher', p.owner.id, p.images, canImg);
+  var imgs = imgCardsHTML(isPrincipal ? 'principal' : 'teacher', p.owner.id, p.images, canImg);
   var submit = (can && S.me.role === 'teacher')
     ? '<section class="card"><h3>إرسال الملف إلى المدير</h3>' +
       '<p class="muted" style="margin:0">' + (p.sentAt
@@ -627,8 +617,11 @@ function renderProfile() {
     (!own && S.me.role === 'admin' ? '<div class="notice">تعدّل بيانات ملف ' + esc(p.owner.name) + ' بصفتك مسؤول النظام.</div>' : '') +
     '<section class="card"><h3>المعلومات الأساسية</h3>' + form +
     '<p class="muted" style="margin:6px 0 0">«صفة صاحب الملف» تحدد عناصر الأداء: المعلم ١١ عنصرًا، والموجه الطلابي ١٣، والوكيل والمدير ١٩. تغييرها لا يحذف الشواهد، لكن شواهد العناصر غير الموجودة في الصفة الجديدة لا تظهر حتى تعود إليها. إذا كانت المدرسة مسجلة باسم مديرها، يُكتب اسم المدير تلقائيًا ولا يُعدَّل.</p></section>' +
-    '<section class="card"><h3>التوقيع</h3><div class="img-grid">' + imgs + '</div>' +
-    '<p class="muted" style="margin:0">توقيعك يضيفه أنت أو مسؤول النظام، ويظهر في معاينة الملف وطباعته. توقيع المدير والختم يضيفهما المدير في ملفه أو مسؤول النظام.</p></section>' +
+    (isPrincipal
+      ? '<section class="card"><h3>توقيع المدير وختم المدرسة</h3><div class="img-grid">' + imgs + '</div>' +
+        '<p class="muted" style="margin:0">يظهران في معاينة ملفك وطباعته، وفي ملفات المعلمين المسندين إليك عند معاينتها من حسابك أو من حساب مسؤول النظام، ولا يظهران للمعلم. ومدرستك المحددة أعلاه: من يختارها من المعلمين يُكتب اسمك مديرًا له تلقائيًا.</p></section>'
+      : '<section class="card"><h3>التوقيع</h3><div class="img-grid">' + imgs + '</div>' +
+        '<p class="muted" style="margin:0">توقيعك يضيفه أنت أو مسؤول النظام، ويظهر في معاينة الملف وطباعته. توقيع المدير والختم يضيفهما المدير في ملفه أو مسؤول النظام.</p></section>') +
     submit;
   applySchool(main().querySelector('form[data-action="profile"]'));
 }
@@ -825,6 +818,13 @@ function loadPreview() {
     // توقيع المدير وختمه: لمسؤول النظام والمدير فقط، ولا يُطلبان أصلًا في حساب المعلم.
     S.me.role === 'teacher' ? Promise.resolve({}) : call('getPrincipalImages', [S.token, S.targetId]).catch(function () { return {}; })
   ]).then(function (r) {
+    // ملف المدير نفسه: ختمه هو في المنتصف.
+    if (r[1].owner.role !== 'principal') return r;
+    return cached('img', S.targetId + ':stamp', 'getProfileImage', [S.token, S.targetId, 'stamp']).then(function (st) {
+      r[3] = { stamp: st };
+      return r;
+    });
+  }).then(function (r) {
     var src = function (x) { return x ? 'data:' + x.mime + ';base64,' + x.base64 : ''; };
     var imgs = { ownerSig: src(r[2]), principalSig: src(r[3].sig), stamp: src(r[3].stamp) };
     var evs = [];
@@ -887,7 +887,7 @@ function docHTML(f, p, imgs) {
     '</section>' +
     '<div class="doc-flow">' + evidenceHTML(f, imgs) + '</div>' +
     '<section class="a4 a4-last">' +
-    '<div class="a4-body">' + (pr.message ? '<h3 class="a4-title">رسالة المعلم</h3><p class="doc-msg">' + esc(pr.message) + '</p>' : '') + '</div>' +
+    '<div class="a4-body">' + (pr.message ? '<h3 class="a4-title">رسالة صاحب الملف</h3><p class="doc-msg">' + esc(pr.message) + '</p>' : '') + '</div>' +
     '<div class="doc-end"><section class="doc-sign"><div><span class="muted">توقيع صاحب الملف</span>' + (imgs.ownerSig ? '<img src="' + imgs.ownerSig + '" alt="">' : '<div class="sig-empty"></div>') + '<strong>' + esc(pr.ownerName) + '</strong></div>' +
     // الختم في المنتصف بين التوقيعين، وفوقه كلمة «الختم».
     '<div class="doc-stamp-col"><span class="muted">الختم</span>' + (imgs.stamp ? '<img class="doc-stamp" src="' + imgs.stamp + '" alt="ختم المدرسة">' : '<div class="stamp-empty"></div>') + '</div>' +
@@ -1200,13 +1200,14 @@ function renderAccounts() {
         (slot === 'ownerSig' ? '<button class="btn small" type="button" data-act="sign" data-slot="' + slot + '" data-id="' + esc(u.id) + '">رسم</button>' : '') + '</span></div>';
     };
     var sigs = '<div class="sig-cell">' + imgCell('ownerSig', u.hasSig, 'التوقيع') + (u.role === 'principal' ? imgCell('stamp', u.hasStamp, 'الختم') : '') + '</div>';
-    return '<tr><td>' + esc(u.name) + '</td><td dir="ltr">' + esc(u.username) + '</td><td>' + ROLE_LABEL[u.role] + '</td>' +
+    var roleText = u.role === 'teacher' && u.ownerType && u.ownerType !== 'معلم' ? u.ownerType : ROLE_LABEL[u.role];
+    return '<tr><td>' + esc(u.name) + '</td><td dir="ltr">' + esc(u.username) + '</td><td>' + esc(roleText) + '</td>' +
       '<td>' + sigs + '</td>' +
       '<td>' + (u.active ? 'فعّال' : 'موقوف') + '</td><td><div style="display:flex;gap:8px;flex-wrap:wrap">' +
       '<button class="btn small" type="button" data-act="reset" data-id="' + esc(u.id) + '" data-name="' + esc(u.name) + '">تعيين كلمة مرور</button>' +
       assign +
       (self ? '' : '<button class="btn small" type="button" data-act="toggle" data-id="' + esc(u.id) + '" data-active="' + (u.active ? '1' : '0') + '">' + (u.active ? 'إيقاف' : 'تفعيل') + '</button>') +
-      (u.role === 'teacher' ? '<button class="btn small" type="button" data-act="open" data-id="' + esc(u.id) + '">فتح الملف</button>' : '') +
+      (u.role !== 'admin' ? '<button class="btn small" type="button" data-act="open" data-id="' + esc(u.id) + '">فتح الملف</button>' : '') +
       (self ? '' : '<button class="btn small danger" type="button" data-act="del-user" data-id="' + esc(u.id) + '" data-name="' + esc(u.name) + '">حذف</button>') +
       '</div></td></tr>';
   }).join('');
@@ -1216,9 +1217,11 @@ function renderAccounts() {
     '<label>الاسم الكامل<input name="name" required></label>' +
     '<label>اسم الدخول<input name="username" dir="ltr" required></label>' +
     '<label>كلمة المرور الأولية<input name="password" type="password" minlength="8" required></label>' +
-    '<label>الصلاحية<select name="role"><option value="teacher">معلم</option><option value="principal">مدير</option><option value="admin">مسؤول النظام</option></select></label>' +
+    '<label>الصلاحية<select name="role">' +
+      '<option value="teacher|معلم">معلم</option><option value="teacher|وكيل مدرسة">وكيل مدرسة</option><option value="teacher|موجه طلابي">موجه طلابي</option>' +
+      '<option value="principal|مدير مدرسة">مدير مدرسة</option><option value="admin|">مسؤول النظام</option></select></label>' +
     '<button class="btn primary" type="submit">إنشاء الحساب</button></form>' +
-    '<p class="muted">المعلم يرى ملفه فقط. المدير يرى المعلمين الذين تسندهم إليه أنت. مسؤول النظام يرى الجميع.</p></section>' +
+    '<p class="muted">المعلم والوكيل والموجه الطلابي: كلٌّ يرى ملفه فقط، وعناصر أدائه حسب صفته. المدير: له ملف أدائه، ويتابع من تسندهم إليه أنت. مسؤول النظام يرى الجميع.</p></section>' +
     '<section class="card"><h2>الحسابات</h2><div class="table-wrap"><table><thead><tr><th>الاسم</th><th>اسم الدخول</th><th>الصلاحية</th><th>التوقيع والختم</th><th>الحالة</th><th></th></tr></thead><tbody>' +
     rows + '</tbody></table></div>' +
     '<p class="muted" style="margin:0">توقيع كل حساب وختم المدير يُرفعان من هنا مباشرة. توقيع المدير وختمه يظهران في ملفات معلميه لك وللمدير فقط، لا للمعلم.</p></section>';
@@ -1279,7 +1282,7 @@ document.addEventListener('click', function (e) {
   var t = e.target.closest('[data-act]');
   if (!t) return;
   var a = t.dataset.act;
-  if (a === 'tab') return go(t.dataset.view, S.targetId);
+  if (a === 'tab') return go(t.dataset.view, S.inFile ? S.targetId : S.me.id);
   if (a === 'elem') return openElement(Number(t.dataset.element));
   if (a === 'idea') {
     var titleInput = document.querySelector('.sheet input[name="title"]');
@@ -1431,7 +1434,11 @@ document.addEventListener('submit', function (e) {
   }
 
   if (action === 'account') {
-    return call('createAccount', [S.token, val('name'), val('username'), raw('password'), val('role')]).then(function () {
+    // الصلاحية «دور|صفة»: الوكيل والموجه حسابات أصحاب ملفات مثل المعلم، وتُحفظ صفتهم فتظهر عناصرهم مباشرة.
+    var roleParts = val('role').split('|');
+    return call('createAccount', [S.token, val('name'), val('username'), raw('password'), roleParts[0]]).then(function (r) {
+      return roleParts[1] && r && r.id ? call('saveProfile', [S.token, { ownerType: roleParts[1] }, r.id]) : null;
+    }).then(function () {
       toast('تم إنشاء الحساب.');
       form.reset();
       return loadAccounts();

@@ -174,7 +174,8 @@ API.getFile = function (_t, targetId) {
     ]);
   }).then(function (r) {
     var owner = r[0], evs = sbData(r[1]), rts = sbData(r[2]), lks = sbData(r[3]);
-    var ownerType = (sbData(r[4]) || {}).owner_type || 'معلم';
+    // بلا صفة محفوظة: حساب المدير «مدير مدرسة»، وغيره «معلم».
+    var ownerType = (sbData(r[4]) || {}).owner_type || (owner.role === 'principal' ? 'مدير مدرسة' : 'معلم');
     var elements = elementsFor(ownerType).map(function (el) {
       var rating = rts.filter(function (x) { return x.element === el.no; })[0];
       var link = lks.filter(function (x) { return x.element === el.no; })[0];
@@ -274,6 +275,7 @@ API.getProfile = function (_t, targetId) {
     var owner = r[0], p = sbData(r[1]) || {}, sub = sbData(r[2]);
     var profile = {};
     Object.keys(PROFILE_MAP).forEach(function (k) { profile[k] = p[PROFILE_MAP[k]] || ''; });
+    if (!profile.ownerType) profile.ownerType = owner.role === 'principal' ? 'مدير مدرسة' : 'معلم';
     return {
       owner: { id: owner.id, name: owner.name, username: owner.username, role: owner.role },
       editable: targetId === me,
