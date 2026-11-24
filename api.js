@@ -285,7 +285,7 @@ API.getProfile = function (_t, targetId) {
     var profile = {};
     Object.keys(PROFILE_MAP).forEach(function (k) { profile[k] = p[PROFILE_MAP[k]] || ''; });
     return {
-      owner: { id: owner.id, name: owner.name, username: owner.username },
+      owner: { id: owner.id, name: owner.name, username: owner.username, role: owner.role },
       editable: targetId === me,
       profile: profile,
       images: { ownerSig: !!p.owner_sig_path, principalSig: !!p.principal_sig_path, stamp: !!p.stamp_path },
@@ -336,6 +336,84 @@ API.getProfileImage = function (_t, targetId, slot) {
   });
 };
 
+/** توقيع المدير المسند للمعلم وختمه (من ملف المدير). لا يصل إليهما المعلم أصلًا (principal_of تعيد null له). */
+API.getPrincipalImages = function (_t, teacherId) {
+  return sb.rpc('principal_of', { teacher: teacherId }).then(function (r) {
+    var pid = sbData(r);
+    if (!pid) return {};
+    return Promise.all([
+      API.getProfileImage(null, pid, 'ownerSig'),
+      API.getProfileImage(null, pid, 'stamp'),
+      sb.from('users').select('name').eq('id', pid).maybeSingle()
+    ]).then(function (x) {
+      var u = x[2] && x[2].data;
+      return { sig: x[0], stamp: x[1], name: u ? u.name : '' };
+    });
+  });
+};
+
+/* ---------- الرسائل ---------- */
+
+/** رسائل المستخدم الواردة، مرقّمة من الأقدم (رقم ١) إلى الأحدث. */
+API.listMessages = function () {
+  return sbMe().then(function (id) {
+    return sb.from('messages').select('id, from_id, body, created_at, read_at').eq('to_id', id).order('created_at');
+  }).then(function (r) {
+    var rows = sbData(r, 'تعذّر تحميل الرسائل.');
+    var ids = rows.map(function (m) { return m.from_id; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+    var names = ids.length ? sb.from('users').select('id, name').in('id', ids) : Promise.resolve({ data: [] });
+    return names.then(function (n) {
+      var map = {};
+      (n.data || []).forEach(function (u) { map[u.id] = u.name; });
+      return rows.map(function (m, i) {
+        return { id: m.id, no: i + 1, from: map[m.from_id] || 'المدير', body: m.body, createdAt: m.created_at, read: !!m.read_at };
+      });
+    });
+  });
+};
+
+API.unreadCount = function () {
+  return sbMe().then(function (id) {
+    return sb.from('messages').select('id', { count: 'exact', head: true }).eq('to_id', id).is('read_at', null);
+  }).then(function (r) { sbFail(r.error); return r.count || 0; });
+};
+
+API.markMessagesRead = function () {
+  return sbMe().then(function (id) {
+    return sb.from('messages').update({ read_at: new Date().toISOString() }).eq('to_id', id).is('read_at', null);
+  }).then(function (r) { sbFail(r.error); return true; });
+};
+
+API.sendMessage = function (_t, toId, body) {
+  body = String(body || '').trim();
+  if (!body) return Promise.reject(new Error('اكتب نص الملاحظة.'));
+  return sbMe().then(function (id) {
+    return sb.from('messages').insert({ from_id: id, to_id: toId, body: body.slice(0, 2000) });
+  }).then(function (r) { sbData(r, 'تعذّر إرسال الملاحظة.'); return true; });
+};
+
+/** الملاحظات التي أرسلها المستخدم إلى معلم معيّن، مع حالة القراءة. */
+API.sentMessages = function (_t, toId) {
+  return sbMe().then(function (id) {
+    return sb.from('messages').select('id, body, created_at, read_at').eq('from_id', id).eq('to_id', toId).order('created_at');
+  }).then(function (r) {
+    return sbData(r, 'تعذّر تحميل الملاحظات.').map(function (m, i) {
+      return { id: m.id, no: i + 1, body: m.body, createdAt: m.created_at, read: !!m.read_at };
+    });
+  });
+};
+
+/* ---------- الدرجة المستحقة من ٥ ---------- */
+
+/** grade رقم من ٠ إلى ٥ (بخطوة نصف)، أو null لحذف الدرجة. */
+API.setGrade = function (_t, teacherId, grade) {
+  return sbMe().then(function (id) {
+    if (grade === null) return sb.from('grades').delete().eq('teacher_id', teacherId);
+    if (!(grade >= 0 && grade <= 5)) throw new Error('الدرجة من ٠ إلى ٥.');
+    return sb.from('grades').upsert({ teacher_id: teacherId, grade: grade, principal_id: id }, { onConflict: 'teacher_id' });
+  }).then(function (r) { sbData(r, 'تعذّر حفظ الدرجة.'); return true; });
+};
+
 API.submitToPrincipal = function () {
   return sbMe().then(function (id) {
     return sb.from('submissions').upsert({ user_id: id, sent_at: new Date().toISOString() }, { onConflict: 'user_id' });
@@ -347,9 +425,12 @@ API.listUsers = function () {
     sb.from('users').select('id, username, name, role, active').order('name'),
     sb.rpc('file_summaries'),
     sb.from('submissions').select('user_id'),
-    sb.from('access').select('principal_id, teacher_id')
+    sb.from('access').select('principal_id, teacher_id'),
+    sb.from('grades').select('teacher_id, grade'),
+    sb.from('profiles').select('user_id, owner_sig_path, stamp_path')
   ]).then(function (r) {
     var users = sbData(r[0]), sums = sbData(r[1]) || [], subs = sbData(r[2]) || [], acc = sbData(r[3]) || [];
+    var grades = sbData(r[4]) || [], profs = sbData(r[5]) || [];
     return users.map(function (u) {
       var counts = [], ratings = [];
       ELEMENTS.forEach(function (el, i) {
@@ -361,7 +442,10 @@ API.listUsers = function () {
         id: u.id, username: u.username, name: u.name, role: u.role, active: u.active,
         submitted: subs.some(function (s) { return s.user_id === u.id; }),
         summary: sbSummary(counts, ratings),
-        teacherIds: acc.filter(function (a) { return a.principal_id === u.id; }).map(function (a) { return a.teacher_id; })
+        teacherIds: acc.filter(function (a) { return a.principal_id === u.id; }).map(function (a) { return a.teacher_id; }),
+        grade: (function () { var g = grades.filter(function (x) { return x.teacher_id === u.id; })[0]; return g ? Number(g.grade) : null; })(),
+        hasSig: profs.some(function (p) { return p.user_id === u.id && p.owner_sig_path; }),
+        hasStamp: profs.some(function (p) { return p.user_id === u.id && p.stamp_path; })
       };
     });
   });
@@ -406,7 +490,7 @@ API.changeMyPassword = function (_t, oldPassword, newPassword) {
 
 /** نسخة احتياطية بما يسمح به الدور: كل شيء لمسؤول النظام، وملف المستخدم وحده لغيره. */
 API.exportBackup = function () {
-  var tables = ['users', 'profiles', 'evidence', 'ratings', 'links', 'access', 'submissions'];
+  var tables = ['users', 'profiles', 'evidence', 'ratings', 'links', 'access', 'submissions', 'messages', 'grades'];
   return Promise.all(tables.map(function (t) { return sb.from(t).select('*'); })).then(function (r) {
     var out = { exportedAt: new Date().toISOString(), source: 'supabase', elements: ELEMENTS };
     tables.forEach(function (t, i) { out[t] = sbData(r[i], 'تعذّر تجهيز النسخة الاحتياطية.'); });

@@ -15,11 +15,17 @@ var MIME = {
 };
 var OWNER_TYPES = ['معلم', 'وكيل مدرسة', 'موجه طلابي', 'مدير مدرسة'];
 var TERMS = ['الفصل الدراسي الأول', 'الفصل الدراسي الثاني'];
-var PROFILE_IMAGES = [
-  { key: 'ownerSig', label: 'توقيع صاحب الملف', sign: true, admin: false },
-  { key: 'principalSig', label: 'توقيع مدير المدرسة', sign: true, admin: true },
-  { key: 'stamp', label: 'ختم المدرسة', sign: false, admin: true }
-];
+/* صور كل حساب في ملفه هو: المعلم توقيعه، والمدير توقيعه وختمه. يرفعها صاحبها أو مسؤول النظام.
+   توقيع المدير وختمه يظهران في ملف المعلم لمسؤول النظام والمدير فقط، لا للمعلم. */
+var IMAGES_BY_ROLE = {
+  teacher: [{ key: 'ownerSig', label: 'توقيع صاحب الملف', sign: true }],
+  principal: [{ key: 'ownerSig', label: 'توقيع المدير', sign: true }, { key: 'stamp', label: 'ختم المدرسة', sign: false }],
+  admin: [{ key: 'ownerSig', label: 'التوقيع', sign: true }]
+};
+function imagesFor(role) { return IMAGES_BY_ROLE[role] || IMAGES_BY_ROLE.teacher; }
+function imageLabel(slot) {
+  return slot === 'stamp' ? 'ختم المدرسة' : 'التوقيع';
+}
 var GENERAL_IDEAS = ['سجل الدوام', 'جدول الحصص والانتظار', 'سجل المناوبة', 'محضر لجنة مدرسية', 'خطاب تقدير', 'سجل متابعة منصة مدرستي'];
 var EVIDENCE_IDEAS = {
   1: ['خطة الدرس الأسبوعية', 'سجل متابعة الواجبات', 'شهادة حضور دورة'],
@@ -208,7 +214,17 @@ function enter() {
   S.cache = { img: {}, ev: {}, pdf: {} };
   shell();
   S.targetId = S.me.id;
+  S.unread = 0;
   go(S.me.role === 'teacher' ? 'elements' : 'teachers', S.me.id);
+  if (S.me.role === 'teacher') refreshUnread();
+}
+
+/** عدد رسائل المدير غير المقروءة، ويظهر بجوار تبويب «رسائل المدير». */
+function refreshUnread() {
+  return call('unreadCount').then(function (n) {
+    S.unread = n;
+    renderNav();
+  }).catch(function () {});
 }
 
 function shell() {
@@ -224,13 +240,16 @@ function shell() {
 function navItems() {
   if (!S.inFile) {
     if (S.me.role === 'admin') return [['teachers', 'المعلمون'], ['accounts', 'الحسابات'], ['backup', 'النسخ الاحتياطي']];
-    return [['teachers', 'المعلمون']];
+    return [['teachers', 'المعلمون'], ['myfile', 'بيانات الملف']];
   }
   var own = S.targetId === S.me.id;
   var list = [];
   if (!own) list.push(['teachers', 'رجوع إلى المعلمين']);
   list.push(['elements', 'عناصر الأداء'], ['profile', 'بيانات الملف'], ['preview', 'معاينة الملف']);
-  if (own && S.me.role === 'teacher') list.push(['submit', 'إرسال الملف إلى المدير']);
+  if (own && S.me.role === 'teacher') {
+    list.push(['messages', 'رسائل المدير' + (S.unread ? ' <span class="badge" aria-label="' + S.unread + ' غير مقروءة">' + d(S.unread) + '</span>' : '')]);
+    list.push(['submit', 'إرسال الملف إلى المدير']);
+  }
   if (own) list.push(['backup', 'النسخ الاحتياطي']);
   return list;
 }
@@ -251,6 +270,8 @@ function go(view, id) {
   if (main()) main().innerHTML = '<div class="notice" aria-live="polite">جارٍ التحميل…</div>';
   if (view === 'teachers') { S.inFile = false; renderNav(); return loadTeachers(); }
   if (view === 'accounts') { S.inFile = false; renderNav(); return loadAccounts(); }
+  if (view === 'myfile') { S.inFile = false; S.targetId = S.me.id; renderNav(); return loadProfileView(); }
+  if (view === 'messages') { S.inFile = true; S.targetId = S.me.id; renderNav(); return loadMessages(); }
   if (view === 'backup') {
     S.inFile = S.me.role === 'teacher';
     S.targetId = S.me.id;
@@ -438,10 +459,30 @@ function loadProfileView() {
   }).catch(handleErr);
 }
 
+function imgCardsHTML(role, userId, images, canEdit) {
+  return imagesFor(role).map(function (im) {
+    var has = images[im.key];
+    var actions = canEdit
+      ? '<button class="btn small" type="button" data-act="pick-img" data-slot="' + im.key + '" data-id="' + esc(userId) + '">رفع صورة</button>' +
+        (im.sign ? '<button class="btn small" type="button" data-act="sign" data-slot="' + im.key + '" data-id="' + esc(userId) + '">رسم توقيع</button>' : '')
+      : '';
+    return '<div class="img-card"><span class="img-name">' + esc(im.label) + '</span>' +
+      (has ? '<img class="img-thumb" data-thumb="' + im.key + '" data-user="' + esc(userId) + '" alt="' + esc(im.label) + '">' : '<span class="muted">لم يُرفع بعد</span>') +
+      '<div class="img-actions">' + actions + '</div></div>';
+  }).join('');
+}
+
 function renderProfile() {
   var p = S.profile, pr = p.profile, can = p.editable;
+  var canImg = can || S.me.role === 'admin';
+  if (p.owner.role === 'principal') {
+    main().innerHTML =
+      '<div class="page-head"><h2>' + esc(can ? 'بيانات الملف' : 'بيانات ' + p.owner.name) + '</h2></div>' +
+      '<section class="card"><h3>توقيع المدير وختم المدرسة</h3><div class="img-grid">' + imgCardsHTML('principal', p.owner.id, p.images, canImg) + '</div>' +
+      '<p class="muted" style="margin:0">يظهران في ملفات المعلمين المسندين إليك عند معاينتها وطباعتها من حسابك أو من حساب مسؤول النظام، ولا يظهران للمعلم.</p></section>';
+    return;
+  }
   var dis = can ? '' : ' disabled';
-  var canImg = function (im) { return im.admin ? S.me.role === 'admin' : can; };
   var fields = PROFILE_FIELDS.map(function (f) {
     var val = esc(pr[f.key]);
     var input = f.select
@@ -454,16 +495,7 @@ function renderProfile() {
   var msg = '<label class="wide">رسالة المعلم<textarea name="message" rows="4" maxlength="1000"' + dis + '>' + esc(pr.message) + '</textarea></label>';
   var form = '<form class="pform" data-action="profile">' + fields + msg +
     (can ? '<div class="form-actions"><button class="btn primary" type="submit">حفظ بيانات الملف</button></div>' : '') + '</form>';
-  var imgs = PROFILE_IMAGES.map(function (im) {
-    var has = p.images[im.key];
-    var actions = canImg(im)
-      ? '<button class="btn small" type="button" data-act="pick-img" data-slot="' + im.key + '">رفع صورة</button>' +
-        (im.sign ? '<button class="btn small" type="button" data-act="sign" data-slot="' + im.key + '">رسم توقيع</button>' : '')
-      : '';
-    return '<div class="img-card"><span class="img-name">' + esc(im.label) + '</span>' +
-      (has ? '<img class="img-thumb" data-thumb="' + im.key + '" alt="' + esc(im.label) + '">' : '<span class="muted">لم يُرفع بعد</span>') +
-      '<div class="img-actions">' + actions + '</div></div>';
-  }).join('');
+  var imgs = imgCardsHTML('teacher', p.owner.id, p.images, canImg);
   var submit = (can && S.me.role === 'teacher')
     ? '<section class="card"><h3>إرسال الملف إلى المدير</h3>' +
       '<p class="muted" style="margin:0">' + (p.sentAt
@@ -473,12 +505,19 @@ function renderProfile() {
   main().innerHTML =
     '<div class="page-head"><h2>' + esc(can ? 'بيانات الملف' : 'بيانات ملف ' + p.owner.name) + '</h2></div>' +
     '<section class="card"><h3>المعلومات الأساسية</h3>' + form + '</section>' +
-    '<section class="card"><h3>التواقيع والختم</h3><div class="img-grid">' + imgs + '</div>' +
-    '<p class="muted" style="margin:0">توقيع صاحب الملف يضيفه المعلم، أما توقيع المدير والختم فيضيفهما مسؤول النظام ولا يمكن تغييرهما من غيره. تظهر في معاينة الملف للطباعة.</p></section>' +
+    '<section class="card"><h3>التوقيع</h3><div class="img-grid">' + imgs + '</div>' +
+    '<p class="muted" style="margin:0">توقيعك يضيفه أنت أو مسؤول النظام، ويظهر في معاينة الملف وطباعته. توقيع المدير والختم يضيفهما المدير في ملفه أو مسؤول النظام.</p></section>' +
     submit;
 }
 
-function pickImage(slot) {
+/** بعد رفع صورة أو رسم توقيع: تحديث الشاشة التي جاء منها (الحسابات أو بيانات الملف). */
+function afterImageSaved() {
+  S.cache.img = {};
+  return S.view === 'accounts' ? loadAccounts() : loadProfileView();
+}
+
+function pickImage(slot, userId) {
+  var target = userId || S.targetId;
   var inp = document.createElement('input');
   inp.type = 'file';
   inp.accept = 'image/png,image/jpeg,image/webp';
@@ -487,18 +526,19 @@ function pickImage(slot) {
     if (!file) return;
     if (file.size > MAX_IMG_BYTES) return toast('حجم الصورة أكبر من ١ ميغابايت.', 'err');
     readBase64(file).then(function (b64) {
-      return call('uploadProfileImage', [S.token, S.targetId, slot, file.type, b64]);
+      return call('uploadProfileImage', [S.token, target, slot, file.type, b64]);
     }).then(function () {
-      S.cache.img = {};
       toast('تم رفع الصورة.');
-      return loadProfileView();
+      return afterImageSaved();
     }).catch(handleErr);
   };
   inp.click();
 }
 
-function openSignature(slot) {
-  var label = PROFILE_IMAGES.filter(function (x) { return x.key === slot; })[0].label;
+function openSignature(slot, userId) {
+  S.sigTarget = userId || S.targetId;
+  var who = S.users && S.users.filter(function (u) { return u.id === S.sigTarget; })[0];
+  var label = imageLabel(slot) + (who && S.view === 'accounts' ? ' — ' + who.name : '');
   openModal('<div class="modal-head"><div><h2>رسم التوقيع</h2><span class="muted">' + esc(label) + '</span></div>' +
     '<button class="btn small" type="button" data-act="close">إغلاق</button></div>' +
     '<canvas id="sigpad" class="sigpad" width="600" height="240" aria-label="لوحة التوقيع"></canvas>' +
@@ -541,11 +581,11 @@ function saveSignature(slot) {
   var c = S.sig;
   if (!c) return;
   var b64 = c.toDataURL('image/png').split(',')[1];
-  return call('uploadProfileImage', [S.token, S.targetId, slot, 'image/png', b64]).then(function () {
-    S.cache.img = {};
+  var target = S.sigTarget || S.targetId;
+  return call('uploadProfileImage', [S.token, target, slot, 'image/png', b64]).then(function () {
     toast('تم حفظ التوقيع.');
     closeModal();
-    return loadProfileView();
+    return afterImageSaved();
   }).catch(handleErr);
 }
 
@@ -581,8 +621,8 @@ function submitPrincipal() {
 /** يعرض صور التواقيع والختم الموجودة في بطاقاتها. */
 function loadThumbs() {
   document.querySelectorAll('[data-thumb]').forEach(function (img) {
-    var key = img.dataset.thumb;
-    cached('img', S.targetId + ':' + key, 'getProfileImage', [S.token, S.targetId, key]).then(function (r) {
+    var key = img.dataset.thumb, user = img.dataset.user || S.targetId;
+    cached('img', user + ':' + key, 'getProfileImage', [S.token, user, key]).then(function (r) {
       if (r) img.src = 'data:' + r.mime + ';base64,' + r.base64;
     }).catch(function () {});
   });
@@ -657,14 +697,12 @@ function loadPreview() {
   return Promise.all([
     call('getFile', [S.token, S.targetId]),
     call('getProfile', [S.token, S.targetId]),
-    Promise.all(PROFILE_IMAGES.map(function (im) {
-      return cached('img', S.targetId + ':' + im.key, 'getProfileImage', [S.token, S.targetId, im.key]);
-    }))
+    cached('img', S.targetId + ':ownerSig', 'getProfileImage', [S.token, S.targetId, 'ownerSig']),
+    // توقيع المدير وختمه: لمسؤول النظام والمدير فقط، ولا يُطلبان أصلًا في حساب المعلم.
+    S.me.role === 'teacher' ? Promise.resolve({}) : call('getPrincipalImages', [S.token, S.targetId]).catch(function () { return {}; })
   ]).then(function (r) {
-    var imgs = {};
-    PROFILE_IMAGES.forEach(function (im, i) {
-      imgs[im.key] = r[2][i] ? 'data:' + r[2][i].mime + ';base64,' + r[2][i].base64 : '';
-    });
+    var src = function (x) { return x ? 'data:' + x.mime + ';base64,' + x.base64 : ''; };
+    var imgs = { ownerSig: src(r[2]), principalSig: src(r[3].sig), stamp: src(r[3].stamp) };
     var evs = [];
     r[0].elements.forEach(function (el) {
       el.evidence.forEach(function (x) {
@@ -928,14 +966,80 @@ function renderTeachers() {
     return '<tr><td>' + esc(u.name) + '<br><span class="muted">' + (u.submitted ? 'أرسل ملفه إلى المدير' : 'لم يرسل ملفه بعد') + '</span></td><td dir="ltr">' + esc(u.username) + '</td>' +
       '<td><div class="meter"><span style="width:' + s.readiness + '%"></span></div><span class="muted">' + pct(s.readiness) + '</span></td>' +
       '<td>' + d(s.evidenceTotal) + '</td><td>' + (u.active ? 'فعّال' : 'موقوف') + '</td>' +
-      '<td><button class="btn small" type="button" data-act="open" data-id="' + esc(u.id) + '"' +
-      (S.me.role === 'principal' && !u.submitted ? ' disabled title="يفتح بعد إرسال المعلم ملفه"' : '') + '>فتح الملف</button></td></tr>';
+      '<td><div class="grade-cell"><input class="grade-input" type="number" inputmode="decimal" min="0" max="5" step="0.5" dir="ltr" data-id="' + esc(u.id) + '" value="' + (u.grade === null ? '' : u.grade) + '" aria-label="الدرجة المستحقة من ٥ للمعلم ' + esc(u.name) + '"><span class="grade-state muted" data-for="' + esc(u.id) + '"></span></div></td>' +
+      '<td><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn small" type="button" data-act="open" data-id="' + esc(u.id) + '"' +
+      (S.me.role === 'principal' && !u.submitted ? ' disabled title="يفتح بعد إرسال المعلم ملفه"' : '') + '>فتح الملف</button>' +
+      '<button class="btn small" type="button" data-act="note" data-id="' + esc(u.id) + '" data-name="' + esc(u.name) + '">ملاحظة</button></div></td></tr>';
   }).join('');
   main().innerHTML = '<section class="card"><h2>المعلمون</h2>' +
     (list.length
-      ? '<div class="table-wrap"><table><thead><tr><th>الاسم</th><th>اسم الدخول</th><th>الجاهزية</th><th>الشواهد</th><th>الحالة</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+      ? '<div class="table-wrap"><table><thead><tr><th>الاسم</th><th>اسم الدخول</th><th>الجاهزية</th><th>الشواهد</th><th>الحالة</th><th>الدرجة المستحقة (من ٥)</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        '<p class="muted" style="margin:0">الدرجة تُحفظ تلقائيًا عند كتابتها، ولا يراها المعلم. «ملاحظة» ترسل رسالة تظهر للمعلم في تبويب «رسائل المدير».</p>'
       : '<div class="empty">' + (S.me.role === 'principal' ? 'لم يُسنَد إليك معلمون بعد. يحدد مسؤول النظام المعلمين الذين تتابعهم.' : 'لا توجد حسابات معلمين بعد. أضفها من تبويب الحسابات.') + '</div>') +
     '</section>';
+}
+
+/** حفظ الدرجة تلقائيًا بعد توقف الكتابة قليلًا. */
+var gradeTimers = {};
+function scheduleGrade(input) {
+  var id = input.dataset.id;
+  var state = document.querySelector('.grade-state[data-for="' + id + '"]');
+  clearTimeout(gradeTimers[id]);
+  var raw = String(input.value).trim();
+  var val = raw === '' ? null : Number(raw);
+  if (val !== null && (isNaN(val) || val < 0 || val > 5 || Math.round(val * 2) !== val * 2)) {
+    if (state) { state.textContent = 'من ٠ إلى ٥ بخطوة نصف'; state.className = 'grade-state err'; }
+    return;
+  }
+  if (state) { state.textContent = '…'; state.className = 'grade-state muted'; }
+  gradeTimers[id] = setTimeout(function () {
+    call('setGrade', [S.token, id, val]).then(function () {
+      var u = S.users.filter(function (x) { return x.id === id; })[0];
+      if (u) u.grade = val;
+      if (state) { state.textContent = 'حُفظت ✓'; state.className = 'grade-state ok'; }
+    }).catch(function (err) {
+      if (state) { state.textContent = 'لم تُحفظ'; state.className = 'grade-state err'; }
+      handleErr(err);
+    });
+  }, 700);
+}
+
+/** نافذة ملاحظات المدير لمعلم: الملاحظات السابقة مرقّمة مع حالة القراءة، ونموذج لإرسال ملاحظة جديدة. */
+function openNote(teacherId, name) {
+  openModal('<div class="modal-head"><div><h2>ملاحظة للمعلم</h2><span class="muted">' + esc(name) + '</span></div>' +
+    '<button class="btn small" type="button" data-act="close">إغلاق</button></div>' +
+    '<div id="note-history" class="notice">جارٍ التحميل…</div>' +
+    '<form class="col" data-action="note" data-id="' + esc(teacherId) + '" data-name="' + esc(name) + '">' +
+    '<label>نص الملاحظة<textarea name="body" rows="4" maxlength="2000" required></textarea></label>' +
+    '<div class="form-actions"><button class="btn" type="button" data-act="close">إلغاء</button><button class="btn primary" type="submit">إرسال</button></div></form>');
+  call('sentMessages', [S.token, teacherId]).then(function (list) {
+    var box = document.getElementById('note-history');
+    if (!box) return;
+    box.className = 'msg-list';
+    box.innerHTML = list.length
+      ? list.slice().reverse().map(function (m) {
+          return '<div class="msg"><div class="msg-head"><strong>ملاحظة رقم ' + d(m.no) + '</strong><span class="muted">' + esc(fmtDate(m.createdAt)) + ' · ' + (m.read ? 'قُرئت' : 'لم تُقرأ بعد') + '</span></div><p>' + esc(m.body) + '</p></div>';
+        }).join('')
+      : '<p class="muted" style="margin:0">لم ترسل لهذا المعلم ملاحظات بعد.</p>';
+  }).catch(handleErr);
+}
+
+/* ---------- رسائل المدير (عند المعلم) ---------- */
+
+function loadMessages() {
+  return call('listMessages').then(function (list) {
+    var unread = list.filter(function (m) { return !m.read; }).length;
+    main().innerHTML = '<div class="page-head"><h2>رسائل المدير</h2></div>' +
+      (list.length
+        ? '<div class="msg-list">' + list.slice().reverse().map(function (m) {
+            return '<article class="msg' + (m.read ? '' : ' unread') + '"><div class="msg-head"><strong>رسالة رقم ' + d(m.no) + (m.read ? '' : ' <span class="badge">جديدة</span>') + '</strong>' +
+              '<span class="muted">' + esc(m.from) + ' · ' + esc(fmtDate(m.createdAt)) + '</span></div><p>' + esc(m.body) + '</p></article>';
+          }).join('') + '</div>'
+        : '<div class="empty">لا توجد رسائل من المدير بعد.</div>');
+    if (unread) {
+      return call('markMessagesRead').then(function () { S.unread = 0; renderNav(); });
+    }
+  }).catch(handleErr);
 }
 
 function loadAccounts() {
@@ -950,7 +1054,15 @@ function renderAccounts() {
     var self = u.id === S.me.id;
     var assign = u.role === 'principal'
       ? '<button class="btn small" type="button" data-act="assign" data-id="' + esc(u.id) + '">المعلمون المسندون (' + d(u.teacherIds.length) + ')</button>' : '';
+    var imgCell = function (slot, has, label) {
+      return '<div class="sig-slot"><span class="muted">' + label + '</span>' +
+        (has ? '<img class="sig-mini" data-thumb="' + slot + '" data-user="' + esc(u.id) + '" alt="' + label + ' ' + esc(u.name) + '">' : '<span class="sig-none">—</span>') +
+        '<span class="sig-btns"><button class="btn small" type="button" data-act="pick-img" data-slot="' + slot + '" data-id="' + esc(u.id) + '">رفع</button>' +
+        (slot === 'ownerSig' ? '<button class="btn small" type="button" data-act="sign" data-slot="' + slot + '" data-id="' + esc(u.id) + '">رسم</button>' : '') + '</span></div>';
+    };
+    var sigs = '<div class="sig-cell">' + imgCell('ownerSig', u.hasSig, 'التوقيع') + (u.role === 'principal' ? imgCell('stamp', u.hasStamp, 'الختم') : '') + '</div>';
     return '<tr><td>' + esc(u.name) + '</td><td dir="ltr">' + esc(u.username) + '</td><td>' + ROLE_LABEL[u.role] + '</td>' +
+      '<td>' + sigs + '</td>' +
       '<td>' + (u.active ? 'فعّال' : 'موقوف') + '</td><td><div style="display:flex;gap:8px;flex-wrap:wrap">' +
       '<button class="btn small" type="button" data-act="reset" data-id="' + esc(u.id) + '" data-name="' + esc(u.name) + '">تعيين كلمة مرور</button>' +
       assign +
@@ -966,8 +1078,10 @@ function renderAccounts() {
     '<label>الصلاحية<select name="role"><option value="teacher">معلم</option><option value="principal">مدير</option><option value="admin">مسؤول النظام</option></select></label>' +
     '<button class="btn primary" type="submit">إنشاء الحساب</button></form>' +
     '<p class="muted">المعلم يرى ملفه فقط. المدير يرى المعلمين الذين تسندهم إليه أنت. مسؤول النظام يرى الجميع.</p></section>' +
-    '<section class="card"><h2>الحسابات</h2><div class="table-wrap"><table><thead><tr><th>الاسم</th><th>اسم الدخول</th><th>الصلاحية</th><th>الحالة</th><th></th></tr></thead><tbody>' +
-    rows + '</tbody></table></div></section>';
+    '<section class="card"><h2>الحسابات</h2><div class="table-wrap"><table><thead><tr><th>الاسم</th><th>اسم الدخول</th><th>الصلاحية</th><th>التوقيع والختم</th><th>الحالة</th><th></th></tr></thead><tbody>' +
+    rows + '</tbody></table></div>' +
+    '<p class="muted" style="margin:0">توقيع كل حساب وختم المدير يُرفعان من هنا مباشرة. توقيع المدير وختمه يظهران في ملفات معلميه لك وللمدير فقط، لا للمعلم.</p></section>';
+  loadThumbs();
 }
 
 function openAssign(principalId) {
@@ -1052,8 +1166,9 @@ document.addEventListener('click', function (e) {
   if (a === 'reset') return openResetModal(t.dataset.id, t.dataset.name);
   if (a === 'backup') return downloadBackup();
   if (a === 'assign') return openAssign(t.dataset.id);
-  if (a === 'pick-img') return pickImage(t.dataset.slot);
-  if (a === 'sign') return openSignature(t.dataset.slot);
+  if (a === 'pick-img') return pickImage(t.dataset.slot, t.dataset.id);
+  if (a === 'sign') return openSignature(t.dataset.slot, t.dataset.id);
+  if (a === 'note') return openNote(t.dataset.id, t.dataset.name);
   if (a === 'sig-clear') {
     if (S.sig) S.sig.getContext('2d').clearRect(0, 0, S.sig.width, S.sig.height);
     return;
@@ -1065,6 +1180,10 @@ document.addEventListener('click', function (e) {
       .then(function () { toast('تم تحديث الحساب.'); return loadAccounts(); })
       .catch(handleErr);
   }
+});
+
+document.addEventListener('input', function (e) {
+  if (e.target.classList && e.target.classList.contains('grade-input')) scheduleGrade(e.target);
 });
 
 document.addEventListener('submit', function (e) {
@@ -1170,6 +1289,18 @@ document.addEventListener('submit', function (e) {
       toast('تم حفظ بيانات الملف.');
       return loadProfileView();
     }).catch(handleErr);
+  }
+
+  if (action === 'note') {
+    var noteBtn = form.querySelector('button[type="submit"]');
+    noteBtn.disabled = true;
+    return call('sendMessage', [S.token, form.dataset.id, raw('body')]).then(function () {
+      toast('أُرسلت الملاحظة إلى المعلم.');
+      openNote(form.dataset.id, form.dataset.name);
+    }).catch(function (err) {
+      noteBtn.disabled = false;
+      handleErr(err);
+    });
   }
 
   if (action === 'assign') {
