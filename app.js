@@ -930,7 +930,7 @@ function docHTML(f, p, imgs) {
     '<header class="doc-head" style="background-image:url(assets/header.png)"><div class="doc-head-text"><strong>' + esc(pr.eduOffice || EDU) + '</strong></div><div class="doc-head-tab">' + esc(pr.school || SCHOOL) + '</div></header>' +
     '<div class="doc-title">' +
     '<div><h1>ملف الأداء الوظيفي</h1><p>' + esc(pr.ownerName) + ' · ' + esc(pr.term) + ' · ' + esc(pr.year) + '</p></div></div>' +
-    '<section class="doc-sec"><h3>ملخص الأداء</h3><table class="kv"><tr><th>جاهزية الشواهد</th><td>' + pct(s.readiness) +
+    '<section class="doc-sec"><h3>ملخص الأداء</h3><table class="kv kv-sum"><tr><th>جاهزية الشواهد</th><td>' + pct(s.readiness) +
     '</td><th>عناصر مكتملة</th><td>' + d(complete) + ' / ' + d(f.elements.length) + '</td></tr><tr><th>الشواهد المضافة</th><td>' + d(s.evidenceTotal) +
     '</td><th>التقدير الذاتي الاسترشادي</th><td>' + pct(s.selfScore) + '</td></tr></table></section>' +
     '<section class="doc-sec doc-elements"><h3>عناصر الأداء</h3><table class="dt"><thead><tr><th>#</th><th>العنصر</th><th>الوزن</th><th>الشواهد</th><th>الحالة</th><th>التقدير الذاتي</th></tr></thead><tbody>' + rows + '</tbody></table></section>' +
@@ -1166,18 +1166,22 @@ function loadQrFor(elements, imgs) {
 function evidenceHTML(f, imgs) {
   return f.elements.map(function (el) {
     var cards = [];
+    // إن كان في العنصر ملفا PDF فأكثر وكلها صفحة واحدة، تأخذ كل صفحة نصف ورقة فيجتمع كل ملفين في ورقة.
+    var pdfs = el.evidence.map(function (x) { return imgs['pdf:' + x.id]; }).filter(function (p) { return p && p.pages.length; });
+    var half = pdfs.length >= 2 && pdfs.every(function (p) { return p.total === 1; });
     el.evidence.forEach(function (x) {
       var desc = x.description ? '<p class="ev-desc">' + esc(x.description) + '</p>' : '';
       var head = function (note) {
         return '<div class="ev-meta"><strong>' + esc(x.title) + '</strong>' +
-          '<span class="muted">' + esc(x.fileName) + ' · ' + fmtDate(x.uploadedAt) + (note ? ' · ' + note : '') + '</span></div>';
+          '<span class="ev-date">' + fmtDate(x.uploadedAt) + '</span>' +
+          '<span class="muted">' + esc(x.fileName) + (note ? ' · ' + note : '') + '</span></div>';
       };
       var pdf = imgs['pdf:' + x.id];
       if (pdf && pdf.pages.length) {
         pdf.pages.forEach(function (src, i) {
           var note = pdf.total > 1 ? 'صفحة ' + d(i + 1) + ' من ' + d(pdf.total) : '';
           cards.push({ pdf: true, html: '<div class="ev-card ev-pdf">' + head(note) + (i === 0 ? desc : '') +
-            '<img class="ev-img page" src="' + src + '" alt="' + esc(x.title) + '"></div>' });
+            '<img class="ev-img page' + (half ? ' half' : '') + '" src="' + src + '" alt="' + esc(x.title) + '"></div>' });
         });
         return;
       }
