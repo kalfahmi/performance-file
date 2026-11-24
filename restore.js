@@ -31,6 +31,8 @@ var RESTORE_USER_COLS = {
   evidence: ['user_id'], ratings: ['user_id'], links: ['user_id'], access: ['principal_id', 'teacher_id'],
   submissions: ['user_id'], messages: ['from_id', 'to_id'], grades: ['teacher_id', 'principal_id']
 };
+/** أعمدة حسابات يجوز أن تكون فارغة: المدير المحذوف تبقى رسائله ودرجاته بلا اسمه. */
+var RESTORE_NULLABLE = { messages: { from_id: true }, grades: { principal_id: true } };
 var RESTORE_LABELS = {
   users: 'الحسابات', profiles: 'بيانات الملفات', evidence: 'الشواهد', ratings: 'التقديرات الذاتية', links: 'روابط المجلدات',
   access: 'إسناد المعلمين', submissions: 'إرسال الملفات', messages: 'رسائل المدير', grades: 'الدرجات'
@@ -49,7 +51,9 @@ function restoreMapRow(table, row, idMap) {
   var out = Object.assign({}, row);
   var cols = RESTORE_USER_COLS[table] || [];
   for (var i = 0; i < cols.length; i++) {
-    var mapped = idMap[row[cols[i]]];
+    var v = row[cols[i]];
+    if (v == null && RESTORE_NULLABLE[table] && RESTORE_NULLABLE[table][cols[i]]) { out[cols[i]] = null; continue; }
+    var mapped = idMap[v];
     if (!mapped) return null;
     out[cols[i]] = mapped;
   }

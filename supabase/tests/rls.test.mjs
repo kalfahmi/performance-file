@@ -224,5 +224,14 @@ await expect('اسم مستخدم مكرر مرفوض', 'service', `insert into 
 await expect('دوال الخادم تضع توقيع المدير', 'service', `update profiles set principal_sig_path='${U.T2}/principal_sig.png' where user_id='${U.T2}'`, r => r.affected === 1);
 await expect('دوال الخادم تحذف إسنادًا', 'service', `delete from access where principal_id='${U.P2}'`, r => r.affected === 1);
 
+// (في النهاية لأنه يحذف المدير ٢)
+// حذف حساب مدير: تبقى رسائله ودرجاته (migration 0009)
+await expect('رسالة من المدير ٢ للمعلم ٢', 'A', `insert into messages (from_id, to_id, body) values ('${U.P2}','${U.T2}','ملاحظة باقية')`, r => !r.error);
+await expect('درجة من المدير ٢ للمعلم ٢', 'A', `insert into grades (teacher_id, grade, principal_id) values ('${U.T2}', 4, '${U.P2}') on conflict (teacher_id) do update set grade = 4, principal_id = '${U.P2}'`, r => !r.error);
+await db.exec(`delete from auth.users where id = '${U.P2}'`);
+await expect('بعد حذف المدير تبقى رسالته بلا مرسل', 'A', `select count(*) n from messages where to_id='${U.T2}' and body='ملاحظة باقية' and from_id is null`, count(1));
+await expect('بعد حذف المدير تبقى الدرجة بلا واضع', 'A', `select count(*) n from grades where teacher_id='${U.T2}' and principal_id is null and grade = 4`, count(1));
+await expect('حساب المدير المحذوف غير موجود', 'A', `select count(*) n from users where id='${U.P2}'`, count(0));
+
 console.log(`\n${pass} نجح، ${fail} فشل`);
 process.exit(fail ? 1 : 0);

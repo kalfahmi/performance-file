@@ -1539,7 +1539,11 @@ document.addEventListener('click', function (e) {
   }
   if (a === 'del-user') {
     var uid = t.dataset.id, uname = t.dataset.name;
-    return askConfirm('حذف حساب «' + uname + '» نهائيًا؟ يُحذف معه ملفه وشواهده وتوقيعه ورسائله ودرجته، ولا يمكن التراجع. إن أردت منعه من الدخول فقط فاستخدم «إيقاف».', 'حذف نهائي', function () {
+    var urole = (S.users.filter(function (u) { return u.id === uid; })[0] || {}).role;
+    var what = urole === 'principal'
+      ? 'يُحذف معه ملفه وشواهده وتوقيعه وختمه، وتبقى رسائله ودرجاته التي وضعها للمعلمين باسم «مدير محذوف».'
+      : 'يُحذف معه ملفه وشواهده وتوقيعه والرسائل التي وصلته ودرجته.';
+    return askConfirm('حذف حساب «' + uname + '» نهائيًا؟ ' + what + ' ولا يمكن التراجع. إن أردت منعه من الدخول فقط فاستخدم «إيقاف».', 'حذف نهائي', function () {
       var btn = document.querySelector('#modal [data-act="confirm-yes"]');
       if (btn) { btn.disabled = true; btn.textContent = 'جارٍ الحذف…'; }
       return call('deleteAccount', [S.token, uid]).then(function () {

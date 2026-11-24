@@ -316,7 +316,7 @@ API.messagesTo = function (_t, teacherId) {
       var map = {};
       (n.data || []).forEach(function (u) { map[u.id] = u.name; });
       return rows.map(function (m, i) {
-        return { id: m.id, no: i + 1, from: map[m.from_id] || '', body: m.body, createdAt: m.created_at, read: !!m.read_at };
+        return { id: m.id, no: i + 1, from: m.from_id ? (map[m.from_id] || '') : 'مدير محذوف', body: m.body, createdAt: m.created_at, read: !!m.read_at };
       });
     });
   });
@@ -411,7 +411,7 @@ API.listMessages = function () {
       var map = {};
       (n.data || []).forEach(function (u) { map[u.id] = u.name; });
       return rows.map(function (m, i) {
-        return { id: m.id, no: i + 1, from: map[m.from_id] || 'المدير', body: m.body, createdAt: m.created_at, read: !!m.read_at };
+        return { id: m.id, no: i + 1, from: m.from_id ? (map[m.from_id] || 'المدير') : 'مدير محذوف', body: m.body, createdAt: m.created_at, read: !!m.read_at };
       });
     });
   });
