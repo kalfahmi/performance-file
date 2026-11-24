@@ -671,6 +671,7 @@ function loadPreview() {
         '<button class="btn primary" type="button" data-act="print">طباعة / حفظ PDF</button></div>' +
         '<div class="notice no-print">تُعرض الصفحة بالهوية البصرية للمدرسة، ومعها الشواهد. الصور تظهر كاملة، وصفحات ملفات PDF تظهر كصور (حتى ٢٠ صفحة لكل ملف). ملفات Word وExcel يُذكر اسمها فقط.</div>' +
         docHTML(r[0], r[1], imgs);
+      return paginateDoc(document.getElementById('print-area'));
     });
   }).catch(handleErr);
 }
@@ -693,7 +694,9 @@ function docHTML(f, p, imgs) {
   for (var i = 0; i < info.length; i += 2) {
     kv += '<tr><th>' + esc(info[i][0]) + '</th><td>' + esc(info[i][1]) + '</td><th>' + esc(info[i + 1][0]) + '</th><td>' + esc(info[i + 1][1]) + '</td></tr>';
   }
-  return '<div class="doc-wrap"><article class="doc" id="print-area">' +
+  // المستند أوراق A4 ثابتة: الأولى للبيانات، ثم أوراق العناصر (تُبنى بالقياس في paginateDoc)، ثم الورقة الختامية.
+  return '<div class="doc-wrap"><div class="doc" id="print-area">' +
+    '<section class="a4 a4-first">' +
     '<header class="doc-head" style="background-image:url(assets/header.png)"><div class="doc-head-text"><strong>' + esc(EDU) + '</strong></div><div class="doc-head-tab">' + esc(SCHOOL) + '</div></header>' +
     '<div class="doc-title">' +
     '<div><h1>ملف الأداء الوظيفي</h1><p>' + esc(pr.ownerName) + ' · ' + esc(pr.term) + ' · ' + esc(pr.year) + '</p></div></div>' +
@@ -702,14 +705,84 @@ function docHTML(f, p, imgs) {
     '</td><th>عناصر مكتملة</th><td>' + d(complete) + ' / ' + d(11) + '</td></tr><tr><th>الشواهد المضافة</th><td>' + d(s.evidenceTotal) +
     '</td><th>التقدير الذاتي الاسترشادي</th><td>' + pct(s.selfScore) + '</td></tr></table></section>' +
     '<section class="doc-sec"><h3>عناصر الأداء</h3><table class="dt"><thead><tr><th>#</th><th>العنصر</th><th>الوزن</th><th>الشواهد</th><th>الحالة</th><th>التقدير الذاتي</th></tr></thead><tbody>' + rows + '</tbody></table></section>' +
-    '<section class="doc-sec doc-ev-sec"><h3>الشواهد</h3>' + evidenceHTML(f, imgs) + '</section>' +
-    // الصفحة الختامية: رسالة المعلم في أعلاها، والتوقيعات والتذييل في أسفلها.
-    '<div class="doc-closing">' +
-    (pr.message ? '<section class="doc-sec"><h3>رسالة المعلم</h3><p class="doc-msg">' + esc(pr.message) + '</p></section>' : '') +
+    '</section>' +
+    '<div class="doc-flow">' + evidenceHTML(f, imgs) + '</div>' +
+    '<section class="a4 a4-last">' +
+    '<div class="a4-body">' + (pr.message ? '<h3 class="a4-title">رسالة المعلم</h3><p class="doc-msg">' + esc(pr.message) + '</p>' : '') + '</div>' +
     '<div class="doc-end"><section class="doc-sign"><div><span class="muted">توقيع صاحب الملف</span>' + (imgs.ownerSig ? '<img src="' + imgs.ownerSig + '" alt="">' : '<div class="sig-empty"></div>') + '<strong>' + esc(pr.ownerName) + '</strong></div>' +
     '<div><span class="muted">توقيع مدير المدرسة والختم</span><div class="doc-sig-row">' + (imgs.principalSig ? '<img src="' + imgs.principalSig + '" alt="">' : '<div class="sig-empty"></div>') + (imgs.stamp ? '<img class="doc-stamp" src="' + imgs.stamp + '" alt="">' : '') + '</div><strong>' + esc(pr.principalName) + '</strong></div></section>' +
     '<footer class="doc-foot" style="background-image:url(assets/footer.png)"></footer></div>' +
-    '</div></article></div>';
+    '</section>' +
+    '</div></div>';
+}
+
+/** يوزّع شواهد كل عنصر على أوراق A4: كل عنصر يبدأ في ورقة جديدة، وإن لم تتسع الورقة لصف شواهد انتقل إلى ورقة تالية. */
+function paginateDoc(root) {
+  if (!root) return Promise.resolve();
+  var flow = root.querySelector('.doc-flow');
+  var last = root.querySelector('.a4-last');
+  if (!flow || !last) return Promise.resolve();
+  // انتظار تحميل الصور حتى تُعرف أبعادها (decode() قد لا يكتمل لصور داخل عنصر مخفي، فنعتمد على load مع مهلة).
+  var images = Array.prototype.slice.call(root.querySelectorAll('img'));
+  return Promise.all(images.map(function (im) {
+    if (im.complete && im.naturalWidth) return Promise.resolve();
+    return new Promise(function (resolve) {
+      im.addEventListener('load', resolve, { once: true });
+      im.addEventListener('error', resolve, { once: true });
+      setTimeout(resolve, 5000);
+    });
+  })).then(function () {
+    var sheet, body;
+    var newSheet = function () {
+      sheet = document.createElement('section');
+      sheet.className = 'a4 a4-el';
+      body = document.createElement('div');
+      body.className = 'a4-body';
+      sheet.appendChild(body);
+      root.insertBefore(sheet, last);
+      return body;
+    };
+    var fits = function () { return sheet.scrollHeight <= sheet.clientHeight + 1; };
+    var newGrid = function (multi) {
+      var g = document.createElement('div');
+      g.className = 'ev-grid' + (multi ? ' multi' : '');
+      body.appendChild(g);
+      return g;
+    };
+    Array.prototype.slice.call(flow.children).forEach(function (el, i) {
+      newSheet();
+      if (i === 0) {
+        var t = document.createElement('h3');
+        t.className = 'a4-title';
+        t.textContent = 'الشواهد';
+        body.appendChild(t);
+      }
+      var head = el.querySelector('.doc-el-head');
+      body.appendChild(head);
+      var qr = el.querySelector('.doc-qr');
+      if (qr) body.appendChild(qr);
+      var src = el.querySelector('.ev-src');
+      if (!src) {
+        body.appendChild(el.querySelector('.doc-none'));
+        return;
+      }
+      var multi = el.dataset.multi === '1';
+      var grid = newGrid(multi);
+      Array.prototype.slice.call(src.children).forEach(function (row) {
+        grid.appendChild(row);
+        if (fits() || grid.children.length === 1) return;
+        grid.removeChild(row);
+        newSheet();
+        var cont = head.cloneNode(true);
+        var h4 = cont.querySelector('h4');
+        if (h4) h4.insertAdjacentHTML('beforeend', ' <span class="muted cont">(تابع)</span>');
+        body.appendChild(cont);
+        grid = newGrid(multi);
+        grid.appendChild(row);
+      });
+    });
+    flow.remove();
+  });
 }
 
 var QR_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
@@ -765,7 +838,7 @@ function evidenceHTML(f, imgs) {
         : '<div class="ev-file">مرفق: ' + esc(x.fileName) + ' (' + fmtSize(x.size) + ')</div>';
       cards.push({ pdf: false, html: '<div class="ev-card">' + head('') + desc + body + '</div>' });
     });
-    // صفوف لا تنقسم بين صفحتين عند الطباعة: كل صفحة PDF في صف، والصور والملفات الأخرى اثنتين في كل صف.
+    // صفوف الشواهد: كل صفحة PDF في صف، والصور والملفات الأخرى اثنتين في كل صف.
     var rows = [], pair = [];
     var flush = function () {
       if (pair.length) rows.push('<div class="ev-row pair">' + pair.join('') + '</div>');
@@ -778,16 +851,13 @@ function evidenceHTML(f, imgs) {
     });
     flush();
     if (cards.length === 1 && !cards[0].pdf) rows = ['<div class="ev-row">' + cards[0].html + '</div>'];
-    var gridOpen = '<div class="ev-grid' + (cards.length > 1 ? ' multi' : '') + '">';
     var qr = imgs['qr:' + el.no]
       ? '<div class="doc-qr"><img src="' + imgs['qr:' + el.no] + '" alt=""><span>امسح لعرض كل الشواهد</span></div>'
       : '';
     var head = '<div class="doc-el-head"><span class="doc-el-no">' + d(el.no) + '</span>' +
       '<h4>' + esc(el.name) + '</h4><span class="muted">الوزن ' + d(el.weight) + '٪</span></div>';
-    // عنوان العنصر مع أول صف من شواهده في كتلة واحدة، حتى لا يبقى العنوان وحده في أسفل الصفحة.
-    var first = rows.length ? gridOpen + rows[0] + '</div>' : '<p class="doc-none">لا توجد شواهد لهذا العنصر.</p>';
-    var rest = rows.length > 1 ? gridOpen + rows.slice(1).join('') + '</div>' : '';
-    return '<div class="doc-el"><div class="ev-keep">' + head + qr + first + '</div>' + rest + '</div>';
+    return '<div class="doc-el" data-multi="' + (cards.length > 1 ? '1' : '0') + '">' + head + qr +
+      (rows.length ? '<div class="ev-src">' + rows.join('') + '</div>' : '<p class="doc-none">لا توجد شواهد لهذا العنصر.</p>') + '</div>';
   }).join('');
 }
 

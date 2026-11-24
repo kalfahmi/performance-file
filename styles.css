@@ -118,10 +118,18 @@ select:disabled, input:disabled, textarea:disabled { background: var(--soft); co
 .check input { width: 18px; height: 18px; }
 .table-wrap table th, .table-wrap table td { text-align: right; }
 
-/* ---------- معاينة الطباعة (الهوية البصرية للمدرسة) ---------- */
+/* ---------- معاينة الطباعة: أوراق A4 ثابتة (ما يظهر في المعاينة هو ما يُطبع) ---------- */
 .doc-wrap { display: flex; justify-content: center; overflow-x: auto; padding: 8px 0 24px; }
-.doc { width: 210mm; max-width: 100%; min-height: 297mm; background: #fff; box-shadow: 0 2px 18px rgba(23,43,57,.12); display: flex; flex-direction: column; color: #192C3A; }
-.doc-head { position: relative; width: 100%; aspect-ratio: 1696 / 418; background-size: 100% 100%; background-repeat: no-repeat; container-type: inline-size; }
+.doc { width: 210mm; flex: none; display: flex; flex-direction: column; gap: 16px; color: #192C3A; }
+/* الورقة: مقاسها ثابت على كل الشاشات حتى يطابق توزيعُ الشواهد الطباعةَ تمامًا (على الجوال تُمرَّر أفقيًا). */
+/* الاسم a4 (لا sheet) لأن sheet مستخدم لنوافذ التطبيق المنبثقة وله حشو وعرض خاصان. */
+.a4 { position: relative; width: 210mm; height: 296.5mm; box-sizing: border-box; overflow: hidden; background: #fff; box-shadow: 0 2px 18px rgba(23,43,57,.12); display: flex; flex-direction: column; }
+.a4-el { padding: 12mm 0; }
+.a4-last { padding-top: 12mm; }
+.a4-body { padding: 0 28px; display: flex; flex-direction: column; gap: 10px; }
+.a4-title { font-size: 16px; color: var(--copper-dark); border-bottom: 2px solid var(--copper); padding-bottom: 4px; margin: 0; }
+.doc-flow { display: none; }
+.doc-head { position: relative; width: 100%; flex: none; aspect-ratio: 1696 / 418; background-size: 100% 100%; background-repeat: no-repeat; container-type: inline-size; }
 .doc-head-text { position: absolute; top: 30%; left: 5%; max-width: 40%; text-align: right; color: #fff; font-size: 13px; font-size: 2.3cqw; line-height: 1.4; }
 .doc-head-text strong { font-weight: 700; }
 /* اسم المدرسة داخل اللسان السفلي في صورة الترويسة (من ٤٤٨ إلى ١٢٥٠ أفقيًا، ومن ٣١٢ إلى ٤١٥ رأسيًا) */
@@ -129,8 +137,6 @@ select:disabled, input:disabled, textarea:disabled { background: var(--soft); co
 .doc-title { display: block; padding: 16px 28px 6px; text-align: center; }
 .doc-title h1 { font-size: 24px; color: var(--navy); }
 .doc-title p { margin: 0; color: var(--muted); font-size: 14px; }
-.doc-logo { height: 70px; display: grid; place-items: center; }
-.doc-logo img { max-width: 100%; max-height: 70px; object-fit: contain; }
 .doc-sec { padding: 10px 28px 4px; display: flex; flex-direction: column; gap: 8px; }
 .doc-sec h3 { font-size: 16px; color: var(--copper-dark); border-bottom: 2px solid var(--copper); padding-bottom: 4px; }
 table.kv, table.dt { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -138,71 +144,37 @@ table.kv th, table.kv td, table.dt th, table.dt td { border: 1px solid #D5DEE4; 
 table.kv th { background: var(--soft); color: var(--muted); font-weight: 600; width: 22%; }
 table.dt thead th { background: var(--navy); color: #fff; font-weight: 600; }
 .doc-msg { margin: 0; border: 1px solid #D5DEE4; border-radius: 8px; padding: 10px 12px; background: var(--soft); white-space: pre-wrap; font-size: 14px; }
+/* الورقة الختامية: التوقيعات والختم ثم التذييل ملاصقًا لأسفل الورقة. */
+.doc-end { margin-top: auto; display: flex; flex-direction: column; }
 .doc-sign { margin: 18px 28px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; text-align: center; }
 .doc-sign > div { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .doc-sign img, .sig-empty { height: 70px; width: 70%; object-fit: contain; }
 .sig-empty { border-bottom: 1px dashed #C5D2DA; }
-.doc-closing { margin-top: auto; display: flex; flex-direction: column; }
-.doc-end { display: flex; flex-direction: column; }
-.doc-foot { margin-top: auto; width: 100%; aspect-ratio: 1696 / 208; background-size: 100% 100%; background-repeat: no-repeat; }
+.doc-foot { width: 100%; aspect-ratio: 1696 / 208; background-size: 100% 100%; background-repeat: no-repeat; }
 
 @media screen and (max-width: 720px) {
   .pform, .img-grid { grid-template-columns: 1fr; }
-  .doc-title { padding: 12px 14px 4px; }
-  .doc-title h1 { font-size: 18px; }
-  .doc-sec { padding: 8px 14px 2px; }
-  table.kv th { width: 30%; }
 }
 
 @media print {
-  /* هامش علوي وسفلي للصفحات التالية، والصفحة الأولى بلا هامش علوي لتبقى الترويسة ملاصقة لأعلى الورقة. */
-  @page { size: A4; margin: 12mm 0; }
-  @page :first { margin-top: 0; margin-bottom: 0; }
-  /* كل عنصر من العناصر الأحد عشر يبدأ في صفحة جديدة (وقسم الشواهد يبدأ بالعنصر الأول في صفحة جديدة). */
-  .doc-ev-sec { break-before: page; }
-  .doc-ev-sec > .doc-el + .doc-el { break-before: page; }
-  /* الصفحة الأخيرة: الرسالة في أعلاها، والتوقيعات ثم التذييل في أسفلها. */
-  /* كتلي في الطباعة حتى تُحسب الصفحات بدقة. */
-  #print-area.doc { display: block; }
-  /* ارتفاعها ارتفاع مساحة الصفحة بهوامشها العادية (297 - 12 - 12 = 273 ملم) مع هامش أمان، دون الاعتماد على الصفحات المسماة
-     التي لا تطبقها كل نسخ المتصفحات. التوقيعات والتذييل في أسفلها كتلة واحدة لا تنقسم. */
-  .doc-closing { break-before: page; min-height: 268mm; display: flex; flex-direction: column; }
-  .doc-closing .doc-end { margin-top: auto; break-inside: avoid; }
-  .doc-closing .doc-foot { margin-top: 0; }
+  /* كل ورقة في المعاينة = ورقة A4 مطبوعة واحدة، بلا هوامش من المتصفح. */
+  @page { size: A4; margin: 0; }
   body { background: #fff; }
-  .no-print { display: none !important; }
+  .no-print, #toast, #modal { display: none !important; }
   body * { visibility: hidden; }
   #print-area, #print-area * { visibility: visible; }
-  /* في التدفق العادي (لا absolute) حتى تُحسب الصفحات بدقة. ما سواه مخفي بـ no-print. */
-  #print-area { position: static; width: 100%; max-width: none; min-height: 0; box-shadow: none; }
-  .wrap, .pad, main { margin: 0 !important; padding: 0 !important; max-width: none !important; }
-  .wrap, .doc-wrap { display: block !important; min-height: 0 !important; }
-  /* لا شيء بعد المستند في الطباعة حتى لا تنشأ صفحة فارغة في آخره. */
-  #toast, #modal { display: none !important; }
-  .doc-wrap { padding: 0; overflow: visible; }
-  table.dt thead th, .doc-head, .doc-foot { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  /* تخطيط كتلي في الطباعة حتى يحترم المتصفح منع الفصل بين عنوان العنصر وأول شاهد. */
-  .doc-ev-sec, .doc-el { display: block; }
-  .doc-ev-sec > h3 { margin-bottom: 10px; break-after: avoid; }
-  .doc-el { margin-bottom: 12px; }
-  .doc-el-head, .doc-qr { break-after: avoid; }
-  .doc-el-head { margin-bottom: 8px; }
-  table.kv tr, table.dt tr { break-inside: avoid; }
-  /* كل صف شواهد كتلة لا تنقسم بين صفحتين، فلا ينفصل عنوان الشاهد عن صورته. */
-  .ev-grid { display: block; }
-  .ev-row, .ev-keep { break-inside: avoid; }
-  .ev-row { margin-bottom: 10px; }
-  .ev-keep { display: block; }
-  .ev-keep > .doc-qr { margin-bottom: 8px; }
+  .wrap, .pad, main, .doc-wrap { display: block !important; margin: 0 !important; padding: 0 !important; min-height: 0 !important; max-width: none !important; overflow: visible !important; }
+  #print-area { display: block; width: 210mm; }
+  .a4 { box-shadow: none; margin: 0; break-after: page; }
+  .a4:last-child { break-after: auto; }
+  table.dt thead th, .doc-head, .doc-foot, .doc-el-no { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
 /* ---------- الشواهد في المعاينة ---------- */
-.doc-ev-sec { gap: 14px; }
-.doc-el { display: flex; flex-direction: column; gap: 8px; padding-bottom: 6px; }
-.ev-keep { display: flex; flex-direction: column; gap: 8px; }
 .doc-el-head { display: flex; align-items: center; gap: 10px; border-bottom: 2px solid var(--line); padding-bottom: 6px; }
 .doc-el-no { width: 30px; height: 30px; border-radius: 8px; background: var(--navy); color: #fff; display: grid; place-items: center; font-weight: 700; flex: none; }
 .doc-el-head h4 { margin: 0; flex: 1; font-size: 15px; color: var(--navy); }
+.doc-el-head .cont { font-size: 12px; font-weight: 400; }
 .doc-none { margin: 0; font-size: 13px; color: var(--muted); }
 .ev-card { border: 1px solid #D5DEE4; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; break-inside: avoid; }
 .ev-meta { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
@@ -219,7 +191,6 @@ table.dt thead th { background: var(--navy); color: #fff; font-weight: 600; }
 .ev-grid .ev-img.page { width: auto; max-width: 100%; height: auto; max-height: 195mm; aspect-ratio: auto; margin: 0 auto; object-fit: contain; background: #fff; }
 .ev-page { font-size: 12px; color: #5b6b75; }
 .ev-grid .ev-card { min-width: 0; }
-@media screen and (max-width: 720px) { .ev-row.pair { grid-template-columns: minmax(0, 1fr); } }
 
 /* ---------- رمز QR لمجلد الشواهد ونبذة الشاهد ---------- */
 .doc-qr { display: flex; align-items: center; gap: 12px; margin: 6px 0 10px; }
