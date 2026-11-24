@@ -37,7 +37,7 @@ var EVIDENCE_IDEAS = {
   10: ['تحليل نتائج الاختبارات', 'جدول تصنيف مستويات الطلاب', 'خطة معالجة'],
   11: ['نماذج اختبارات متنوعة', 'روبرك تقويم', 'ملف إنجاز الطلاب']
 };
-var S = { token: null, me: null, view: null, inFile: false, targetId: null, file: null, profile: null, users: [], sig: null };
+var S = { token: null, me: null, view: null, inFile: false, targetId: null, file: null, profile: null, users: [], sig: null, cache: { img: {}, ev: {}, pdf: {} } };
 
 /* ---------- الاتصال بالخادم ---------- */
 
@@ -189,6 +189,7 @@ function renderLogin() {
 }
 
 function enter() {
+  S.cache = { img: {}, ev: {}, pdf: {} };
   shell();
   S.targetId = S.me.id;
   go(S.me.role === 'teacher' ? 'elements' : 'teachers', S.me.id);
@@ -229,6 +230,7 @@ function renderNav() {
 /** التنقل الرئيسي. id اختياري لفتح ملف معلم محدد. */
 function go(view, id) {
   S.view = view;
+  if (main()) main().innerHTML = '<div class="notice" aria-live="polite">جارٍ التحميل…</div>';
   if (view === 'teachers') { S.inFile = false; renderNav(); return loadTeachers(); }
   if (view === 'accounts') { S.inFile = false; renderNav(); return loadAccounts(); }
   if (view === 'backup') {
@@ -453,6 +455,7 @@ function pickImage(slot) {
     readBase64(file).then(function (b64) {
       return call('uploadProfileImage', [S.token, slot, file.type, b64]);
     }).then(function () {
+      S.cache.img = {};
       toast('تم رفع الصورة.');
       return loadProfileView();
     }).catch(handleErr);
@@ -505,6 +508,7 @@ function saveSignature(slot) {
   if (!c) return;
   var b64 = c.toDataURL('image/png').split(',')[1];
   return call('uploadProfileImage', [S.token, slot, 'image/png', b64]).then(function () {
+    S.cache.img = {};
     toast('تم حفظ التوقيع.');
     closeModal();
     return loadProfileView();
@@ -513,11 +517,78 @@ function saveSignature(slot) {
 
 /* ---------- معاينة الملف للطباعة ---------- */
 
+/* ---------- تحميل مع ذاكرة مؤقتة للجلسة ---------- */
+
+function cached(store, key, fn, args) {
+  var c = S.cache[store];
+  if (c[key]) return Promise.resolve(c[key]);
+  return call(fn, args).then(function (v) {
+    if (v) c[key] = v;
+    return v;
+  });
+}
+
+/* ---------- عرض صفحات PDF كصور (pdf.js) ---------- */
+
+var PDFJS_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+var PDF_MAX_PAGES = 20;
+
+function loadPdfJs() {
+  if (window.pdfjsLib) return Promise.resolve();
+  return new Promise(function (resolve, reject) {
+    var sc = document.createElement('script');
+    sc.src = PDFJS_LIB;
+    sc.onload = resolve;
+    sc.onerror = reject;
+    document.head.appendChild(sc);
+  }).then(function () {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_LIB.replace('pdf.min.js', 'pdf.worker.min.js');
+  });
+}
+
+function renderPdfPages(base64) {
+  var bytes = Uint8Array.from(atob(base64), function (c) { return c.charCodeAt(0); });
+  return window.pdfjsLib.getDocument({ data: bytes }).promise.then(function (pdf) {
+    var last = Math.min(pdf.numPages, PDF_MAX_PAGES);
+    var out = [];
+    var next = function (i) {
+      if (i > last) return Promise.resolve({ pages: out, total: pdf.numPages });
+      return pdf.getPage(i).then(function (page) {
+        var vp = page.getViewport({ scale: 1.3 });
+        var cv = document.createElement('canvas');
+        cv.width = Math.floor(vp.width);
+        cv.height = Math.floor(vp.height);
+        return page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise.then(function () {
+          out.push(cv.toDataURL('image/jpeg', 0.85));
+          cv.width = 0;
+          cv.height = 0;
+          return next(i + 1);
+        });
+      });
+    };
+    return next(1);
+  });
+}
+
+/** يعيد صفحات الملف كصور، أو null إذا تعذّر العرض (فيُذكر اسم الملف فقط). */
+function pdfPages(id, base64) {
+  var c = S.cache.pdf;
+  if (c[id]) return Promise.resolve(c[id]);
+  return loadPdfJs().then(function () {
+    return renderPdfPages(base64);
+  }).then(function (pdf) {
+    c[id] = pdf;
+    return pdf;
+  }).catch(function () { return null; });
+}
+
 function loadPreview() {
   return Promise.all([
     call('getFile', [S.token, S.targetId]),
     call('getProfile', [S.token, S.targetId]),
-    Promise.all(PROFILE_IMAGES.map(function (im) { return call('getProfileImage', [S.token, S.targetId, im.key]); }))
+    Promise.all(PROFILE_IMAGES.map(function (im) {
+      return cached('img', S.targetId + ':' + im.key, 'getProfileImage', [S.token, S.targetId, im.key]);
+    }))
   ]).then(function (r) {
     var imgs = {};
     PROFILE_IMAGES.forEach(function (im, i) {
@@ -525,17 +596,26 @@ function loadPreview() {
     });
     var evs = [];
     r[0].elements.forEach(function (el) {
-      el.evidence.forEach(function (x) { if (/^image\//.test(x.mime)) evs.push(x); });
-    });
-    return Promise.all([loadQrFor(r[0].elements, imgs), Promise.all(evs.map(function (x) {
-      return call('getEvidenceFile', [S.token, x.id]).then(function (f) {
-        imgs['ev:' + x.id] = 'data:' + f.mime + ';base64,' + f.base64;
+      el.evidence.forEach(function (x) {
+        if (/^image\//.test(x.mime) || x.mime === 'application/pdf') evs.push(x);
       });
-    }))]).then(function () {
+    });
+    var jobs = evs.map(function (x) {
+      return cached('ev', x.id, 'getEvidenceFile', [S.token, x.id]).then(function (f) {
+        if (/^image\//.test(f.mime)) {
+          imgs['ev:' + x.id] = 'data:' + f.mime + ';base64,' + f.base64;
+          return;
+        }
+        return pdfPages(x.id, f.base64).then(function (pdf) {
+          if (pdf) imgs['pdf:' + x.id] = pdf;
+        });
+      });
+    });
+    return Promise.all([loadQrFor(r[0].elements, imgs), Promise.all(jobs)]).then(function () {
       main().innerHTML =
         '<div class="page-head no-print"><h2>معاينة الملف للطباعة</h2>' +
         '<button class="btn primary" type="button" data-act="print">طباعة / حفظ PDF</button></div>' +
-        '<div class="notice no-print">تُعرض الصفحة بالهوية البصرية للمدرسة، ومعها الشواهد. الصور تظهر كاملة، أما الملفات الأخرى (PDF وWord) فيُذكر اسمها. من نافذة الطباعة اختر «حفظ كـ PDF» إن أردت ملفًا.</div>' +
+        '<div class="notice no-print">تُعرض الصفحة بالهوية البصرية للمدرسة، ومعها الشواهد. الصور تظهر كاملة، وصفحات ملفات PDF تظهر كصور (حتى ٢٠ صفحة لكل ملف). ملفات Word وExcel يُذكر اسمها فقط.</div>' +
         docHTML(r[0], r[1], imgs);
     });
   }).catch(handleErr);
@@ -609,22 +689,37 @@ function loadQrFor(elements, imgs) {
 
 function evidenceHTML(f, imgs) {
   return f.elements.map(function (el) {
-    var cards = el.evidence.map(function (x) {
+    var cards = [];
+    el.evidence.forEach(function (x) {
+      var desc = x.description ? '<p class="ev-desc">' + esc(x.description) + '</p>' : '';
+      var head = function (note) {
+        return '<div class="ev-meta"><strong>' + esc(x.title) + '</strong>' +
+          '<span class="muted">' + esc(x.fileName) + ' · ' + fmtDate(x.uploadedAt) + (note ? ' · ' + note : '') + '</span></div>';
+      };
+      var pdf = imgs['pdf:' + x.id];
+      if (pdf && pdf.pages.length) {
+        pdf.pages.forEach(function (src, i) {
+          var note = pdf.total > 1 ? 'صفحة ' + d(i + 1) + ' من ' + d(pdf.total) : '';
+          cards.push('<div class="ev-card">' + head(note) + (i === 0 ? desc : '') +
+            '<img class="ev-img page" src="' + src + '" alt="' + esc(x.title) + '"></div>');
+        });
+        return;
+      }
       var src = imgs['ev:' + x.id];
       var body = src
         ? '<img class="ev-img" src="' + src + '" alt="' + esc(x.title) + '">'
         : '<div class="ev-file">مرفق: ' + esc(x.fileName) + ' (' + fmtSize(x.size) + ')</div>';
-      return '<div class="ev-card"><div class="ev-meta"><strong>' + esc(x.title) + '</strong>' +
-        '<span class="muted">' + esc(x.fileName) + ' · ' + fmtDate(x.uploadedAt) + '</span></div>' +
-        (x.description ? '<p class="ev-desc">' + esc(x.description) + '</p>' : '') + body + '</div>';
+      cards.push('<div class="ev-card">' + head('') + desc + body + '</div>');
     });
     var items = cards.length
       ? '<div class="ev-grid' + (cards.length > 1 ? ' multi' : '') + '">' + cards.join('') + '</div>'
       : '';
+    var qr = imgs['qr:' + el.no]
+      ? '<div class="doc-qr"><img src="' + imgs['qr:' + el.no] + '" alt=""><span>امسح لعرض كل الشواهد</span></div>'
+      : '';
     return '<div class="doc-el"><div class="doc-el-head"><span class="doc-el-no">' + d(el.no) + '</span>' +
       '<h4>' + esc(el.name) + '</h4><span class="muted">الوزن ' + d(el.weight) + '٪</span></div>' +
-      (imgs['qr:' + el.no] ? '<div class="doc-qr"><img src="' + imgs['qr:' + el.no] + '" alt=""><span>امسح لعرض كل الشواهد</span></div>' : '') +
-      (items || '<p class="doc-none">لا توجد شواهد لهذا العنصر.</p>') + '</div>';
+      qr + (items || '<p class="doc-none">لا توجد شواهد لهذا العنصر.</p>') + '</div>';
   }).join('');
 }
 
@@ -747,6 +842,7 @@ function logout() {
   sessionStorage.removeItem('ptoken');
   S.token = null;
   S.me = null;
+  S.cache = { img: {}, ev: {}, pdf: {} };
   call('logout', [token]).catch(function () {}).then(renderLogin);
 }
 
