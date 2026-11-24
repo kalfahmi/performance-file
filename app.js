@@ -233,9 +233,12 @@ function renderRegister() {
   document.getElementById('app').innerHTML =
     '<section class="card auth">' +
     '<div class="brand"><h1>تسجيل جديد</h1><span class="muted">' + esc(SCHOOL) + '</span></div>' +
-    '<p class="muted">يُنشأ لك حساب معلم، وتدخل به مباشرة بعد التسجيل.</p>' +
+    '<p class="muted">يُنشأ لك حساب بالصفة التي تختارها، وتدخل به مباشرة بعد التسجيل.</p>' +
     '<form class="col" data-action="register">' +
     '<label>الاسم الكامل<input name="name" minlength="2" maxlength="120" autocomplete="name" required></label>' +
+    '<label>الصفة<select name="ownerType" required><option value="">اختر…</option>' +
+    OWNER_TYPES.map(function (o) { return '<option value="' + esc(o) + '">' + esc(o) + '</option>'; }).join('') + '</select></label>' +
+    '<p class="muted reg-note">الصفة تحدد عناصر الأداء في ملفك، ولا يغيّرها بعد التسجيل إلا مسؤول النظام.</p>' +
     '<label>اسم الدخول<input name="username" dir="ltr" minlength="3" maxlength="60" pattern="\\S+" title="بلا مسافات" autocomplete="username" required></label>' +
     '<label>كلمة المرور<input name="password" type="password" minlength="8" maxlength="72" autocomplete="new-password" required></label>' +
     '<label>تأكيد كلمة المرور<input name="confirm" type="password" minlength="8" maxlength="72" autocomplete="new-password" required></label>' +
@@ -561,7 +564,7 @@ function deleteEvidence(id) {
 /* select: قائمة ثابتة. other: يضاف خيار «أخرى» لكتابة قيمة غير موجودة. القوائم في lists.js. */
 var OTHER = '__other__';
 var PROFILE_FIELDS = [
-  { key: 'ownerType', label: 'صفة صاحب الملف', select: function () { return OWNER_TYPES; } },
+  { key: 'ownerType', label: 'صفة صاحب الملف', select: function () { return OWNER_TYPES; }, adminOnly: true },
   { key: 'term', label: 'الفصل الدراسي', select: function () { return TERMS; } },
   { key: 'ownerName', label: 'اسم صاحب الملف' },
   { key: 'subject', label: 'المادة أو التخصص', select: function () { return LIST_SUBJECTS; }, other: true },
@@ -663,10 +666,13 @@ function renderProfile() {
   var isPrincipal = p.owner.role === 'principal';
   var dis = can ? '' : ' disabled';
   var fields = PROFILE_FIELDS.filter(function (f) { return !f.principalOnly || isPrincipal; }).map(function (f) {
+    // الصفة يغيّرها مسؤول النظام فقط.
+    var fdis = f.adminOnly && S.me.role !== 'admin' ? ' disabled' : dis;
     var input = f.select
-      ? selectFieldHTML(f, pr[f.key] || '', dis)
-      : '<input name="' + f.key + '" value="' + esc(pr[f.key]) + '" maxlength="150"' + (f.placeholder ? ' placeholder="' + esc(f.placeholder) + '"' : '') + dis + '>';
-    return '<label>' + esc(isPrincipal && f.principalLabel ? f.principalLabel : f.label) + input + '</label>';
+      ? selectFieldHTML(f, pr[f.key] || '', fdis)
+      : '<input name="' + f.key + '" value="' + esc(pr[f.key]) + '" maxlength="150"' + (f.placeholder ? ' placeholder="' + esc(f.placeholder) + '"' : '') + fdis + '>';
+    return '<label>' + esc(isPrincipal && f.principalLabel ? f.principalLabel : f.label) + input +
+      (f.adminOnly && S.me.role !== 'admin' && can ? '<span class="field-note">يغيّرها مسؤول النظام فقط.</span>' : '') + '</label>';
   }).join('');
   var msg = '<label class="wide">رسالة صاحب الملف<textarea name="message" rows="4" maxlength="1000"' + dis + '>' + esc(pr.message) + '</textarea></label>';
   var form = '<form class="pform" data-action="profile" data-owner="' + (isPrincipal ? 'principal' : '') + '">' + fields + msg +
@@ -682,7 +688,7 @@ function renderProfile() {
     '<div class="page-head"><h2>' + esc(own ? 'بيانات الملف' : 'بيانات ملف ' + p.owner.name) + '</h2></div>' +
     (!own && S.me.role === 'admin' ? '<div class="notice">تعدّل بيانات ملف ' + esc(p.owner.name) + ' بصفتك مسؤول النظام.</div>' : '') +
     '<section class="card"><h3>المعلومات الأساسية</h3>' + form +
-    '<p class="muted" style="margin:6px 0 0">«صفة صاحب الملف» تحدد عناصر الأداء: المعلم ١١ عنصرًا، والموجه الطلابي ١٣، والوكيل والمدير ١٩. تغييرها لا يحذف الشواهد، لكن شواهد العناصر غير الموجودة في الصفة الجديدة لا تظهر حتى تعود إليها. إذا كانت المدرسة مسجلة باسم مديرها، يُكتب اسم المدير تلقائيًا ولا يُعدَّل.</p></section>' +
+    '<p class="muted" style="margin:6px 0 0">«صفة صاحب الملف» تحدد عناصر الأداء: المعلم ١١ عنصرًا، والموجه الطلابي ١٣، والوكيل والمدير ١٩، ويغيّرها مسؤول النظام فقط. تغييرها لا يحذف الشواهد، لكن شواهد العناصر غير الموجودة في الصفة الجديدة لا تظهر حتى تعود إليها. إذا كانت المدرسة مسجلة باسم مديرها، يُكتب اسم المدير تلقائيًا ولا يُعدَّل.</p></section>' +
     (isPrincipal
       ? '<section class="card"><h3>توقيع المدير وختم المدرسة</h3><div class="img-grid">' + imgs + '</div>' +
         '<p class="muted" style="margin:0">يظهران في معاينة ملفك وطباعته، وفي ملفات المعلمين المسندين إليك عند معاينتها من حسابك أو من حساب مسؤول النظام، ولا يظهران للمعلم. ومدرستك المحددة أعلاه: من يختارها من المعلمين يُكتب اسمك مديرًا له تلقائيًا.</p></section>'
@@ -1964,7 +1970,7 @@ document.addEventListener('submit', function (e) {
     var regBtn = form.querySelector('button[type="submit"]');
     regBtn.disabled = true;
     regBtn.textContent = 'جارٍ إنشاء الحساب…';
-    return call('register', [val('name'), val('username'), raw('password')]).then(function (r) {
+    return call('register', [val('name'), val('username'), raw('password'), val('ownerType')]).then(function (r) {
       S.token = r.token;
       S.me = r.user;
       S.prefetch = r.file;
@@ -2027,7 +2033,8 @@ document.addEventListener('submit', function (e) {
     var data = {};
     // نموذج المدير يحوي بعض الحقول فقط (data-fields)، فلا تُمسح الحقول الأخرى.
     var only = form.dataset.fields ? form.dataset.fields.split(',') : null;
-    var fieldsIn = PROFILE_FIELDS.filter(function (f) { return (!only || only.indexOf(f.key) !== -1) && form.elements[f.key]; });
+    // الحقول المقفلة (مثل الصفة لغير مسؤول النظام) لا تُرسل، فلا تُمسح قيمتها.
+    var fieldsIn = PROFILE_FIELDS.filter(function (f) { return (!only || only.indexOf(f.key) !== -1) && form.elements[f.key] && !form.elements[f.key].disabled; });
     fieldsIn.forEach(function (f) {
       data[f.key] = val(f.key) === OTHER ? val(f.key + '__other') : val(f.key);
     });

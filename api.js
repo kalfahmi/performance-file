@@ -128,8 +128,8 @@ API.setupAdmin = function (name, username, password) {
 };
 
 /** التسجيل الذاتي: ينشئ حساب معلم ثم يسجّل دخوله. */
-API.register = function (name, username, password) {
-  return sbFunction('register', { name: name, username: username, password: password }).then(function () {
+API.register = function (name, username, password, ownerType) {
+  return sbFunction('register', { name: name, username: username, password: password, ownerType: ownerType }).then(function () {
     return API.login(username, password);
   });
 };

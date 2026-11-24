@@ -188,15 +188,22 @@ await expect('مسؤول النظام يعدّل بيانات ملف معلم', 
 await expect('مسؤول النظام يحذف رسالة', 'A', `delete from messages where to_id='${U.T1}' and from_id='${U.P}'`, r => r.affected === 1);
 await expect('المعلم لا يحذف رسائله', 'T1', `delete from messages where to_id='${U.T1}'`, none);
 
+// الصفة لمسؤول النظام فقط (migration 0010)
+await expect('المعلم لا يغيّر صفته', 'T1', `update profiles set owner_type='مدير مدرسة' where user_id='${U.T1}'`, denied);
+await expect('المدير لا يغيّر صفته', 'P', `update profiles set owner_type='معلم' where user_id='${U.P}'`, denied);
+await expect('المعلم يعدّل بقية بياناته', 'T1', `update profiles set subject='العلوم' where user_id='${U.T1}'`, r => r.affected === 1);
+await expect('المعلم لا يضيف ملفًا بصفة', 'T2', `insert into profiles (user_id, owner_type) values ('${U.T2}','وكيل مدرسة') on conflict (user_id) do nothing`, denied);
+await expect('الخادم يضع الصفة عند التسجيل', 'service', `update profiles set owner_type='معلم' where user_id='${U.T2}'`, r => r.affected === 1);
+
 // عناصر حسب الصفة (migration 0006)
-await expect('المعلم يضع صفته وكيلًا', 'T1', `update profiles set owner_type='وكيل مدرسة' where user_id='${U.T1}'`, r => r.affected === 1);
+await expect('مسؤول النظام يضع صفة المعلم وكيلًا', 'A', `update profiles set owner_type='وكيل مدرسة' where user_id='${U.T1}'`, r => r.affected === 1);
 await expect('ملخص الوكيل ١٩ عنصرًا', 'T1', `select count(*) n from file_summaries()`, count(19));
 await expect('الصفة تظهر في الملخص', 'T1', `select count(*) n from file_summaries() where owner_type='وكيل مدرسة'`, count(19));
 await expect('شاهد في العنصر ١٩ مقبول', 'T1', `insert into evidence (user_id, element, title, file_path, file_name, mime, size) values ('${U.T1}',19,'x','${U.T1}/e19','x','a',1)`, r => !r.error);
 await expect('العنصر ٢٠ مرفوض', 'T1', `insert into ratings (user_id, element, rating) values ('${U.T1}',20,3)`, denied);
-await expect('المعلم يضع صفته موجهًا', 'T1', `update profiles set owner_type='موجه طلابي' where user_id='${U.T1}'`, r => r.affected === 1);
+await expect('مسؤول النظام يضع صفته موجهًا', 'A', `update profiles set owner_type='موجه طلابي' where user_id='${U.T1}'`, r => r.affected === 1);
 await expect('ملخص الموجه ١٣ عنصرًا', 'T1', `select count(*) n from file_summaries()`, count(13));
-await expect('العودة إلى معلم', 'T1', `update profiles set owner_type='معلم' where user_id='${U.T1}'`, r => r.affected === 1);
+await expect('العودة إلى معلم', 'A', `update profiles set owner_type='معلم' where user_id='${U.T1}'`, r => r.affected === 1);
 await expect('ملخص المعلم ١١ عنصرًا', 'T1', `select count(*) n from file_summaries()`, count(11));
 
 // ملف أداء المدير نفسه
