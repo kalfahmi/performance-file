@@ -26,20 +26,6 @@ function imagesFor(role) { return IMAGES_BY_ROLE[role] || IMAGES_BY_ROLE.teacher
 function imageLabel(slot) {
   return slot === 'stamp' ? 'ختم المدرسة' : 'التوقيع';
 }
-var GENERAL_IDEAS = ['سجل الدوام', 'جدول الحصص والانتظار', 'سجل المناوبة', 'محضر لجنة مدرسية', 'خطاب تقدير', 'سجل متابعة منصة مدرستي'];
-var EVIDENCE_IDEAS = {
-  1: ['خطة الدرس الأسبوعية', 'سجل متابعة الواجبات', 'شهادة حضور دورة'],
-  2: ['سجل حضور مجتمع التعلم', 'ورقة عمل ورشة', 'شهادة مشاركة'],
-  3: ['سجل التواصل مع أولياء الأمور', 'محضر اجتماع أولياء الأمور', 'رسائل التواصل المكتوبة'],
-  4: ['خطة درس تتضمن استراتيجيات متنوعة', 'صور من تطبيق الاستراتيجية', 'أوراق عمل طلابية'],
-  5: ['كشف متابعة المادة', 'خطة علاجية', 'مقارنة نتائج قبل وبعد'],
-  6: ['خطة تعلم فصلية', 'توزيع المنهج', 'خطة الدرس'],
-  7: ['صور من استخدام الوسائل', 'روابط المنصات التعليمية', 'مقاطع عرض للدرس'],
-  8: ['صور للفصل', 'جدول توزيع الطلاب', 'لوحات الجدار التعليمية'],
-  9: ['سجل السلوك', 'خطة تعزيز السلوك', 'جدول المناوبة الصفية'],
-  10: ['تحليل نتائج الاختبارات', 'جدول تصنيف مستويات الطلاب', 'خطة معالجة'],
-  11: ['نماذج اختبارات متنوعة', 'روبرك تقويم', 'ملف إنجاز الطلاب']
-};
 var S = { token: null, me: null, view: null, inFile: false, targetId: null, file: null, profile: null, users: [], sig: null, cache: { img: {}, ev: {}, pdf: {} } };
 
 /* ---------- أدوات ---------- */
@@ -77,9 +63,9 @@ function toast(msg, kind) {
   toast.timer = setTimeout(function () { el.className = 'toast'; }, 3800);
 }
 
-function openModal(html) {
+function openModal(html, cls) {
   var m = document.getElementById('modal');
-  m.innerHTML = '<div class="' + (html.indexOf('modal-head') !== -1 ? 'sheet wide' : 'sheet') + '" role="dialog" aria-modal="true">' + html + '</div>';
+  m.innerHTML = '<div class="' + (cls || (html.indexOf('modal-head') !== -1 ? 'sheet wide' : 'sheet')) + '" role="dialog" aria-modal="true">' + html + '</div>';
   m.hidden = false;
   var first = m.querySelector('input');
   if (first) first.focus();
@@ -90,14 +76,17 @@ function closeModal() {
   if (m) m.hidden = true;
   S.sig = null;
   S.onConfirm = null;
+  S.onCancel = null;
 }
 
-/** نافذة تأكيد داخل التطبيق بدل confirm() الذي تمنعه بعض المتصفحات والتطبيقات المثبتة. */
-function askConfirm(message, yesLabel, onYes, danger) {
+/** نافذة تأكيد داخل التطبيق بدل confirm() الذي تمنعه بعض المتصفحات والتطبيقات المثبتة.
+ *  onCancel (اختياري): ما يُفتح عند «إلغاء»، مثل العودة إلى صفحة العنصر. */
+function askConfirm(message, yesLabel, onYes, danger, onCancel) {
   openModal('<h2>تأكيد</h2><p>' + esc(message) + '</p>' +
     '<div class="form-actions"><button class="btn" type="button" data-act="close">إلغاء</button>' +
     '<button class="btn ' + (danger ? 'danger' : 'primary') + '" type="button" data-act="confirm-yes">' + esc(yesLabel) + '</button></div>');
   S.onConfirm = onYes;
+  S.onCancel = onCancel || null;
   var yes = document.querySelector('#modal [data-act="confirm-yes"]');
   if (yes) yes.focus();
 }
@@ -298,7 +287,7 @@ function navItems() {
     list.push(['messages', 'رسائل المدير' + (S.unread ? ' <span class="badge" aria-label="' + S.unread + ' غير مقروءة">' + d(S.unread) + '</span>' : '')]);
     list.push(['submit', 'إرسال الملف إلى المدير']);
   }
-  if (own) list.push(['backup', S.me.role === 'admin' ? 'النسخ الاحتياطي' : 'تنزيل ملفي']);
+  if (own) list.push(['backup', 'النسخ الاحتياطي']);
   return list;
 }
 
@@ -373,55 +362,120 @@ function renderElementCard(el, count) {
     '</button>';
 }
 
+/** يحدّث الملف ويعيد فتح صفحة العنصر في موضعها، فلا يخرج المستخدم منها بعد الإضافة أو الحذف أو الحفظ. */
+function refreshElement(no) {
+  var sheet = document.querySelector('#modal .sheet');
+  var top = sheet ? sheet.scrollTop : 0;
+  return call('getFile', [S.token, S.targetId]).then(function (f) {
+    S.file = f;
+    renderElements();
+    openElement(no);
+    var again = document.querySelector('#modal .sheet');
+    if (again) again.scrollTop = top;
+  });
+}
+
+function hijriDate(iso) {
+  var dt = new Date(iso);
+  if (isNaN(dt)) return '';
+  try { return dt.toLocaleDateString('ar-SA-u-ca-islamic-umalqura', { year: 'numeric', month: 'long', day: 'numeric' }); }
+  catch (e) { return fmtDate(iso); }
+}
+
+function evidenceCardHTML(x, mine) {
+  var isImg = /^image\//.test(x.mime);
+  var kind = x.mime === 'application/pdf' ? 'PDF' : (ext(x.fileName) || 'ملف').toUpperCase();
+  var thumb = isImg
+    ? '<button class="ev-thumb" type="button" data-act="view" data-id="' + esc(x.id) + '" aria-label="عرض الصورة"><img alt="" data-ev-thumb="' + esc(x.id) + '"></button>'
+    : '<button class="ev-thumb ev-file" type="button" data-act="view" data-id="' + esc(x.id) + '"><span>' + esc(kind) + '</span></button>';
+  return '<article class="ev-card">' +
+    '<div class="ev-card-head"><strong>' + esc(x.title) + '</strong><span class="muted">' + esc(hijriDate(x.uploadedAt)) + '</span></div>' +
+    (x.description ? '<p class="ev-desc">' + esc(x.description) + '</p>' : '') +
+    '<div class="ev-card-body">' + thumb + '<span class="muted ev-meta">' + esc(x.fileName) + '<br>' + fmtSize(x.size) + '</span></div>' +
+    '<div class="ev-actions"><button class="btn small" type="button" data-act="view" data-id="' + esc(x.id) + '">عرض</button>' +
+    (mine ? '<button class="btn small" type="button" data-act="edit-ev" data-id="' + esc(x.id) + '">تعديل</button>' +
+      '<button class="btn small danger" type="button" data-act="del" data-id="' + esc(x.id) + '">حذف</button>' : '') +
+    '</div></article>';
+}
+
 function openElement(no) {
   var f = S.file, el = f.elements[no - 1], mine = f.editable;
   if (!el) return;
-  var list = el.evidence.length
-    ? '<ul class="ev-list">' + el.evidence.map(function (x) {
-        return '<li><span><strong>' + esc(x.title) + '</strong>' + (x.description ? '<br><span>' + esc(x.description) + '</span>' : '') + '<br><span class="muted">' + esc(x.fileName) + ' · ' + fmtSize(x.size) + ' · ' + fmtDate(x.uploadedAt) + '</span></span>' +
-          '<span style="display:flex;gap:8px"><button class="btn small" type="button" data-act="view" data-id="' + esc(x.id) + '">عرض</button>' +
-          (mine ? '<button class="btn small" type="button" data-act="edit-ev" data-id="' + esc(x.id) + '">تعديل</button>' : '') + (mine ? '<button class="btn small danger" type="button" data-act="del" data-id="' + esc(x.id) + '">حذف</button>' : '') + '</span></li>';
-      }).join('') + '</ul>'
-    : '<p class="muted">لا توجد شواهد لهذا العنصر بعد.</p>';
-  // أفكار العناصر المرقّمة للمعلم فقط، ولغيره الأفكار العامة.
-  var ideas = ((!f.ownerType || f.ownerType === 'معلم') ? (EVIDENCE_IDEAS[no] || []) : []).concat(GENERAL_IDEAS);
-  var ideaBox = mine
-    ? '<div class="section-box"><h3>أفكار للشواهد</h3><div class="chips">' + ideas.map(function (t) {
-        return '<button class="chip" type="button" data-act="idea" data-idea="' + esc(t) + '">' + esc(t) + '</button>';
-      }).join('') + '</div><p class="muted" style="margin:0">اضغط على الفكرة لتعبئة عنوان الشاهد.</p></div>'
+  var cards = el.evidence.length
+    ? '<div class="ev-cards">' + el.evidence.map(function (x) { return evidenceCardHTML(x, mine); }).join('') + '</div>'
+    : '<p class="muted ev-empty">لا توجد شواهد لهذا العنصر بعد.</p>';
+  var addForm = mine
+    ? '<form class="ev-add" data-action="upload" data-element="' + no + '">' +
+      '<label>عنوان الشاهد<input name="title" maxlength="120" required placeholder="اكتب العنوان أو اختر من الشواهد المقترحة"></label>' +
+      '<label>وصف مختصر<input name="description" maxlength="300" placeholder="ماذا نُفِّذ؟ ومع من؟ وما الأثر؟"></label>' +
+      '<div class="ev-file-row"><span class="ev-file-label">صورة أو ملف الشاهد</span>' +
+      '<label class="file-pick"><input class="vh" name="file" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.doc,.docx,.xls,.xlsx,.ppt,.pptx">' +
+      '<span class="btn">إرفاق صورة أو ملف</span><span class="muted file-name">صور، PDF، Word، Excel، PowerPoint</span></label></div>' +
+      '<div class="ev-add-foot"><button class="btn primary" type="submit">إضافة الشاهد</button>' +
+      '<span class="muted">الحد الأقصى ٤ ميغابايت. الصور الأكبر من ١ ميغابايت تُضغط تلقائيًا.</span></div></form>'
     : '';
-  var upload = mine
-    ? '<div class="section-box"><h3>رفع شاهد جديد</h3><form class="row" data-action="upload" data-element="' + no + '">' +
-      '<label>عنوان الشاهد<input name="title" maxlength="120" required></label>' +
-      '<label>نبذة عن الشاهد (اختياري)<textarea name="description" maxlength="300" rows="2"></textarea></label>' +
-      '<label>الملف<input name="file" type="file" required accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.doc,.docx,.xls,.xlsx,.ppt,.pptx"></label>' +
-      '<button class="btn primary" type="submit">رفع الشاهد</button></form>' +
-      '<p class="muted" style="margin:0">الحد الأقصى ٤ ميغابايت للملفات. الصور الأكبر من ١ ميغابايت تُضغط تلقائيًا. الصيغ: PDF وصور وWord وExcel وPowerPoint.</p></div>'
+  var titles = el.evidence.map(function (x) { return x.title.trim(); });
+  var ideas = ideasFor(f.ownerType, no);
+  var ideaBox = mine && ideas.length
+    ? '<section class="side-box"><h3>شواهد مقترحة لهذا العنصر</h3><div class="idea-list">' + ideas.map(function (t) {
+        var done = titles.indexOf(t) !== -1;
+        return '<button class="idea' + (done ? ' done' : '') + '" type="button" data-act="idea" data-idea="' + esc(t) + '">' +
+          '<span class="tick" aria-hidden="true">' + (done ? '✓' : '') + '</span><span>' + esc(t) + '</span>' +
+          (done ? '<span class="vh">(مضاف)</span>' : '') + '</button>';
+      }).join('') + '</div><p class="muted side-hint">اضغط على الشاهد لتعبئة عنوانه، والعلامة تعني أنه مضاف.</p></section>'
     : '';
+  var linkBox = mine
+    ? '<section class="side-box"><h3>رابط مجلد الشواهد (اختياري)</h3>' +
+      '<p class="muted side-hint">ضع رابط مجلد Google Drive لهذا العنصر، فيظهر في الملف المطبوع رمز QR يفتح الشواهد كاملة.</p>' +
+      '<form class="col" data-action="link" data-element="' + no + '">' +
+      '<input name="url" type="url" dir="ltr" maxlength="300" value="' + esc(el.link || '') + '" placeholder="https://drive.google.com/..." aria-label="رابط مجلد Google Drive">' +
+      '<div class="side-btns"><button class="btn primary small" type="submit">حفظ الرابط</button>' +
+      (el.link ? '<button class="btn small danger" type="button" data-act="clear-link" data-element="' + no + '">حذف الرابط</button>' : '') + '</div></form>' +
+      (el.link ? '<div class="qr-row"><img class="qr-img" alt="رمز QR لمجلد الشواهد" data-qr="' + esc(el.link) + '"><span class="muted side-hint">يظهر في صفحة العنصر عند الطباعة.</span></div>' : '') +
+      '</section>'
+    : (el.link ? '<section class="side-box"><h3>مجلد الشواهد</h3><a href="' + esc(el.link) + '" target="_blank" rel="noopener">فتح مجلد الشواهد</a></section>' : '');
   var ratings = mine
-    ? '<div class="section-box"><h3>التقدير الذاتي</h3><div class="ratings" role="group" aria-label="التقدير الذاتي">' +
+    ? '<section class="side-box"><h3>التقدير الذاتي</h3><div class="ratings" role="group" aria-label="التقدير الذاتي">' +
       [1, 2, 3, 4, 5].map(function (v) {
         return '<button type="button" data-act="rate" data-element="' + no + '" data-value="' + v + '" aria-pressed="' +
           (el.rating === v ? 'true' : 'false') + '" title="' + RATING_LABEL[v] + '">' + d(v) + '</button>';
-      }).join('') + '<span class="muted">' + RATING_LABEL[el.rating] + '</span></div></div>'
-    : '<p class="muted">التقدير الذاتي: ' + RATING_LABEL[el.rating] + '</p>';
-  var linkBox = mine
-    ? '<div class="section-box"><h3>رابط مجلد الشواهد (اختياري)</h3><form class="row" data-action="link" data-element="' + no + '">' +
-      '<label>رابط مجلد Google Drive<input name="url" type="url" maxlength="300" value="' + esc(el.link || '') + '" placeholder="https://drive.google.com/..."></label>' +
-      '<button class="btn primary" type="submit">حفظ الرابط</button>' + (el.link ? '<button class="btn small danger" type="button" data-act="clear-link" data-element="' + no + '">حذف الرابط</button>' : '') + '</form>' +
-      '<p class="muted" style="margin:0">يظهر في الملف المطبوع رمز QR يفتح الشواهد كاملة. اترك الحقل فارغًا لإزالته.</p></div>'
-    : (el.link ? '<div class="section-box"><h3>مجلد الشواهد</h3><a href="' + esc(el.link) + '" target="_blank" rel="noopener">فتح مجلد الشواهد</a></div>' : '');
-  openModal('<div class="modal-head"><div><span class="muted">العنصر ' + d(no) + ' · الوزن ' + d(el.weight) + '٪</span><h2>' + esc(el.name) + '</h2></div>' +
+      }).join('') + '</div><span class="muted side-hint">' + RATING_LABEL[el.rating] + '</span></section>'
+    : '<section class="side-box"><h3>التقدير الذاتي</h3><span class="muted">' + RATING_LABEL[el.rating] + '</span></section>';
+  openModal('<div class="modal-head el-head"><div class="el-title"><span class="no big">' + d(no) + '</span><div><h2>' + esc(el.name) + '</h2>' +
+    '<span class="muted">الوزن النسبي ' + d(el.weight) + '٪ · عدد الشواهد ' + d(el.evidence.length) + '</span></div></div>' +
     '<button class="btn small" type="button" data-act="close">إغلاق</button></div>' +
-    '<div class="section-box"><h3>الشواهد</h3>' + list + '</div>' + ideaBox + upload + linkBox + ratings);
+    '<div class="el-layout"><div class="el-main"><h3>الشواهد المضافة</h3>' + cards + addForm + '</div>' +
+    '<aside class="el-side">' + ideaBox + linkBox + ratings + '</aside></div>', 'sheet wide xl');
+  S.onCancel = null;
+  loadEvidenceThumbs();
+  loadQrImages();
+}
+
+/** صور الشواهد المصغرة في صفحة العنصر (تُحفظ مؤقتًا فلا تُنزَّل مرتين). */
+function loadEvidenceThumbs() {
+  document.querySelectorAll('#modal [data-ev-thumb]').forEach(function (img) {
+    var id = img.dataset.evThumb;
+    cached('ev', id, 'getEvidenceFile', [S.token, id]).then(function (fx) {
+      if (fx && /^image\//.test(fx.mime)) img.src = 'data:' + fx.mime + ';base64,' + fx.base64;
+    }).catch(function () {});
+  });
+}
+
+function loadQrImages() {
+  var imgs = document.querySelectorAll('#modal [data-qr]');
+  if (!imgs.length) return;
+  loadQr().then(function () {
+    imgs.forEach(function (img) { img.src = qrDataUrl(img.dataset.qr); });
+  }).catch(function () {
+    imgs.forEach(function (img) { img.parentNode.removeChild(img); });
+  });
 }
 
 function readRatingAndSave(no, value) {
   var cur = S.file.elements[no - 1].rating;
   var next = cur === value ? 0 : value;
   return call('setRating', [S.token, no, next]).then(function () {
-    closeModal();
-    return loadElements();
+    return refreshElement(no);
   }).catch(handleErr);
 }
 
@@ -433,7 +487,7 @@ function upload(form) {
   // صور الشواهد فوق ١ ميغابايت تُضغط قبل الرفع (توفيرًا للمساحة)، وما سواها يبقى حدّه ٤ ميغابايت.
   var squeeze = /^image\/(jpeg|png|webp)$/.test(mime) && file.size > MAX_IMG_BYTES;
   if (!squeeze && file.size > MAX_BYTES) return toast('حجم الملف أكبر من ٤ ميغابايت.', 'err');
-  var btn = form.querySelector('button');
+  var btn = form.querySelector('button[type="submit"]');
   btn.disabled = true;
   btn.textContent = squeeze ? 'جارٍ ضغط الصورة…' : 'جارٍ الرفع…';
   var name = squeeze ? file.name.replace(/\.[^.]+$/, '') + '.jpg' : file.name;
@@ -445,18 +499,26 @@ function upload(form) {
     var desc = String(form.querySelector('[name="description"]').value || '').trim();
     return call('uploadEvidence', [S.token, Number(form.dataset.element), title, name, im.mime, im.base64, desc]);
   }).then(function () {
-    toast(squeeze ? 'ضُغطت الصورة ورُفع الشاهد.' : 'تم رفع الشاهد.');
-    closeModal();
-    return loadElements();
+    toast(squeeze ? 'ضُغطت الصورة ورُفع الشاهد.' : 'تمت إضافة الشاهد.');
+    return refreshElement(Number(form.dataset.element));
   }).catch(function (err) {
     btn.disabled = false;
-    btn.textContent = 'رفع الشاهد';
+    btn.textContent = 'إضافة الشاهد';
     handleErr(err);
   });
 }
 
+/** رقم العنصر الذي فيه الشاهد. */
+function elementOf(id) {
+  var no = 0;
+  S.file.elements.forEach(function (el) {
+    el.evidence.forEach(function (e) { if (e.id === id) no = el.no; });
+  });
+  return no;
+}
+
 function openEvidenceEdit(id) {
-  var x = null;
+  var x = null, no = elementOf(id);
   S.file.elements.forEach(function (el) {
     el.evidence.forEach(function (e) { if (e.id === id) x = e; });
   });
@@ -467,6 +529,7 @@ function openEvidenceEdit(id) {
     '<label>عنوان الشاهد<input name="title" maxlength="120" required value="' + esc(x.title) + '"></label>' +
     '<label>نبذة عن الشاهد (اختياري)<textarea name="description" maxlength="300" rows="3">' + esc(x.description || '') + '</textarea></label>' +
     '<div class="form-actions"><button class="btn" type="button" data-act="close">إلغاء</button><button class="btn primary" type="submit">حفظ</button></div></form>');
+  S.onCancel = function () { openElement(no); };
 }
 
 function viewEvidence(id) {
@@ -483,13 +546,14 @@ function viewEvidence(id) {
 }
 
 function deleteEvidence(id) {
+  var no = elementOf(id);
   askConfirm('حذف هذا الشاهد نهائيًا؟ لا يمكن التراجع عن الحذف.', 'حذف الشاهد', function () {
     return call('deleteEvidence', [S.token, id]).then(function () {
       toast('تم حذف الشاهد.');
-      closeModal();
-      return loadElements();
+      delete S.cache.ev[id];
+      return refreshElement(no);
     }).catch(handleErr);
-  }, true);
+  }, true, function () { openElement(no); });
 }
 
 /* ---------- بيانات الملف ---------- */
@@ -507,7 +571,7 @@ var PROFILE_FIELDS = [
   // في ملف المدير: المسؤول المباشر (صفته واسمه) بدل «مدير المدرسة».
   { key: 'reviewerTitle', label: 'المسؤول المباشر (الصفة)', principalOnly: true, placeholder: 'مثل: مدير مكتب التعليم' },
   { key: 'principalName', label: 'اسم مدير المدرسة أو مديرتها', principalLabel: 'اسم المسؤول المباشر' },
-  { key: 'jobNo', label: 'الرقم الوظيفي (اختياري)' },
+  { key: 'jobNo', label: 'الرقم الوظيفي / الهوية الوطنية (اختياري)' },
   { key: 'year', label: 'العام الدراسي (هـ)', select: function () { return LIST_YEARS; } }
 ];
 
@@ -716,10 +780,9 @@ function clearLink(no) {
   askConfirm('حذف رابط مجلد الشواهد لهذا العنصر؟', 'حذف الرابط', function () {
     return call('setElementLink', [S.token, no, '']).then(function () {
       toast('تم حذف الرابط.');
-      closeModal();
-      return loadElements();
+      return refreshElement(no);
     }).catch(handleErr);
-  }, true);
+  }, true, function () { openElement(no); });
 }
 
 function submitPrincipal() {
@@ -860,25 +923,35 @@ function docHTML(f, p, imgs) {
       '</td><td>' + statusOf(s.counts[i])[1] + '</td><td>' + RATING_LABEL[el.rating] + '</td></tr>';
   }).join('');
   var isPrincipal = p.owner && p.owner.role === 'principal';
-  var reviewer = [pr.reviewerTitle, pr.principalName].filter(Boolean).join(': ');
   var info = [
-    ['صفة صاحب الملف', pr.ownerType], ['الفترة', pr.term],
-    ['اسم صاحب الملف', pr.ownerName], ['المادة أو التخصص', pr.subject],
-    ['المرحلة والصفوف', pr.stage], ['المدرسة', pr.school],
-    ['إدارة التعليم أو المكتب', pr.eduOffice], isPrincipal ? ['المسؤول المباشر', reviewer] : ['اسم مدير المدرسة أو مديرتها', pr.principalName],
-    ['الرقم الوظيفي', pr.jobNo], ['العام الدراسي', pr.year]
+    ['صفة صاحب الملف', pr.ownerType],
+    ['المادة أو التخصص', pr.subject],
+    ['المرحلة', pr.stage],
+    ['المدرسة', pr.school],
+    ['إدارة التعليم', pr.eduOffice],
+    isPrincipal ? [pr.reviewerTitle || 'المسؤول المباشر', pr.principalName] : ['مدير المدرسة', pr.principalName],
+    ['الرقم الوظيفي / الهوية الوطنية', pr.jobNo]
   ];
-  var kv = '';
-  for (var i = 0; i < info.length; i += 2) {
-    kv += '<tr><th>' + esc(info[i][0]) + '</th><td>' + esc(info[i][1]) + '</td><th>' + esc(info[i + 1][0]) + '</th><td>' + esc(info[i + 1][1]) + '</td></tr>';
-  }
-  // المستند أوراق A4 ثابتة: الأولى للبيانات، ثم أوراق العناصر (تُبنى بالقياس في paginateDoc)، ثم الورقة الختامية.
-  return '<div class="doc-wrap"><div class="doc" id="print-area">' +
+  var rowsCover = info.map(function (r) {
+    return '<div class="cv-row"><span class="cv-k">' + esc(r[0]) + '</span><span class="cv-v">' + (r[1] ? esc(r[1]) : '—') + '</span></div>';
+  }).join('');
+  var period = [pr.term, pr.year ? d(pr.year) + 'هـ' : ''].filter(Boolean).join(' · ');
+  var cover = '<section class="a4 a4-cover"><div class="cv-frame"><div class="cv-inner">' +
+    '<span class="cv-corner tl"></span><span class="cv-corner tr"></span><span class="cv-corner bl"></span><span class="cv-corner br"></span>' +
+    '<div class="cv-top"><span class="cv-kicker">المملكة العربية السعودية · وزارة التعليم</span><span class="cv-office">' + esc(pr.eduOffice || EDU) + '</span></div>' +
+    '<div class="cv-titles"><span class="cv-emblem" aria-hidden="true"><span></span></span><h1>ملف الأداء الوظيفي</h1>' +
+    (period ? '<p class="cv-period">' + esc(period) + '</p>' : '') +
+    '<div class="cv-orn" aria-hidden="true"><i></i><b></b><i></i></div>' +
+    '<p class="cv-name">' + esc(pr.ownerName || f.owner.name) + '</p></div>' +
+    '<div class="cv-table">' + rowsCover + '</div>' +
+    '<div class="cv-bottom"><strong>' + esc(pr.school || SCHOOL) + '</strong></div>' +
+    '</div></div></section>';
+  // المستند أوراق A4 ثابتة: الغلاف، ثم ورقة الملخص وجدول العناصر، ثم أوراق العناصر (تُبنى بالقياس في paginateDoc)، ثم الورقة الختامية.
+  return '<div class="doc-wrap"><div class="doc" id="print-area">' + cover +
     '<section class="a4 a4-first">' +
     '<header class="doc-head" style="background-image:url(assets/header.png)"><div class="doc-head-text"><strong>' + esc(pr.eduOffice || EDU) + '</strong></div><div class="doc-head-tab">' + esc(pr.school || SCHOOL) + '</div></header>' +
     '<div class="doc-title">' +
     '<div><h1>ملف الأداء الوظيفي</h1><p>' + esc(pr.ownerName) + ' · ' + esc(pr.term) + ' · ' + esc(pr.year) + '</p></div></div>' +
-    '<section class="doc-sec"><h3>بيانات الملف</h3><table class="kv">' + kv + '</table></section>' +
     '<section class="doc-sec"><h3>ملخص الأداء</h3><table class="kv"><tr><th>جاهزية الشواهد</th><td>' + pct(s.readiness) +
     '</td><th>عناصر مكتملة</th><td>' + d(complete) + ' / ' + d(f.elements.length) + '</td></tr><tr><th>الشواهد المضافة</th><td>' + d(s.evidenceTotal) +
     '</td><th>التقدير الذاتي الاسترشادي</th><td>' + pct(s.selfScore) + '</td></tr></table></section>' +
@@ -1073,35 +1146,213 @@ function evidenceHTML(f, imgs) {
 function renderBackup() {
   if (S.me.role !== 'admin') {
     main().innerHTML =
-      '<div class="page-head"><h2>تنزيل ملفي</h2></div>' +
-      '<section class="card"><h3>ملفي كاملًا (ZIP)</h3>' +
-      '<p class="muted" style="margin:0">ملف مضغوط تحفظه على جهازك، فيه:</p>' +
-      '<ul class="restore-rules"><li>مجلد لكل عنصر من عناصر الأداء، فيه شواهده بأسمائها الأصلية.</li>' +
-      '<li>«بيانات الملف»: ملخص مقروء لبياناتك وجاهزيتك وشواهد كل عنصر وتقديرك الذاتي.</li>' +
-      '<li>توقيعك' + (S.me.role === 'principal' ? ' وختم المدرسة' : '') + '.</li>' +
-      '<li>«نسخة احتياطية»: ملف بياناتك الذي يستعيد منه مسؤول النظام إن احتجت.</li></ul>' +
-      '<p class="muted" style="margin:0">لحفظ الملف بصيغة الطباعة استخدم «معاينة الملف» ثم «طباعة / حفظ PDF».</p>' +
-      '<div class="form-actions" style="justify-content:flex-start"><button class="btn primary" type="button" data-act="archive">تنزيل ملفي (ZIP)</button>' +
-      '<span id="archive-status" class="muted" aria-live="polite"></span></div></section>';
+      '<div class="page-head"><h2>النسخ الاحتياطي</h2></div>' +
+      '<div class="bk-grid">' +
+      '<section class="card bk-card"><h3>تصدير نسخة احتياطية</h3>' +
+      '<p class="muted">ملف مضغوط (ZIP) واحد يضم شواهدك في مجلد لكل عنصر، وبيانات ملفك وتوقيعك' + (S.me.role === 'principal' ? ' وختم المدرسة' : '') + '.</p>' +
+      '<div class="bk-actions"><button class="btn primary" type="button" data-act="archive">تنزيل النسخة الاحتياطية</button></div>' +
+      '<span id="archive-status" class="muted" aria-live="polite"></span></section>' +
+      '<section class="card bk-card"><h3>استعادة نسخة</h3>' +
+      '<p class="muted">تُضاف من النسخة الشواهد والروابط والتقديرات الناقصة فقط، ولا يُحذف شيء موجود.</p>' +
+      '<form class="col" data-action="zip-read"><label class="file-pick bk-pick"><input class="vh" name="file" type="file" accept=".zip,application/zip">' +
+      '<span class="btn">اختيار ملف النسخة</span><span class="muted file-name">لم يُختر ملف (ZIP)</span></label>' +
+      '<div class="bk-actions"><button class="btn" type="submit">قراءة النسخة</button></div></form>' +
+      '<div id="zip-box" aria-live="polite"></div></section>' +
+      '<section class="card bk-card"><h3>مسح كل البيانات</h3>' +
+      '<p class="muted">يحذف كل شواهدك وروابط المجلدات وتقديراتك نهائيًا. يبقى حسابك وبيانات الملف وتوقيعك. نزّل نسخة احتياطية قبل المسح.</p>' +
+      '<div class="bk-actions"><button class="btn danger" type="button" data-act="wipe">مسح الملف</button></div></section>' +
+      '</div>';
     return;
   }
-  var who = 'جميع الحسابات والملفات';
   main().innerHTML =
     '<div class="page-head"><h2>النسخ الاحتياطي</h2></div>' +
-    '<section class="card"><h3>تنزيل نسخة احتياطية</h3>' +
-    '<p class="muted" style="margin:0">تشمل النسخة: ' + who + '، من بيانات الملف والتقديرات وسجلات الشواهد. لا تحتوي كلمات المرور. ملفات الشواهد نفسها محفوظة في مخزن ملفات النظام، ويُذكر مسار كل ملف في النسخة.</p>' +
-    '<div><button class="btn primary" type="button" data-act="backup">تنزيل نسخة احتياطية (JSON)</button></div></section>' +
-    (S.me.role === 'admin'
-      ? '<section class="card"><h3>استعادة من نسخة احتياطية</h3>' +
-        '<ul class="restore-rules">' +
-        '<li>تُضاف البيانات الناقصة فقط، ولا يُعدَّل الموجود ولا يُحذف. وفي بيانات الملفات تُملأ الحقول الفارغة فقط.</li>' +
-        '<li>الحساب المحذوف يُعاد باسمه واسم دخوله، وبكلمة مرور مؤقتة جديدة تظهر لك بعد الاستعادة.</li>' +
-        '<li>الشاهد والتوقيع لا يُعادان إلا إن كان ملفهما ما زال محفوظًا، لأن النسخة لا تحوي الملفات نفسها.</li>' +
-        '</ul>' +
-        '<form class="row" data-action="restore-read"><label>ملف النسخة الاحتياطية (backup-….json)<input name="file" type="file" accept=".json,application/json" required></label>' +
-        '<button class="btn primary" type="submit">قراءة الملف ومقارنته</button></form>' +
-        '<div id="restore-box"></div></section>'
-      : '');
+    '<div class="bk-grid two">' +
+    '<section class="card bk-card"><h3>تصدير نسخة احتياطية</h3>' +
+    '<p class="muted">ملف واحد (JSON) يضم جميع الحسابات والملفات: بيانات الملفات والتقديرات وسجلات الشواهد والرسائل والدرجات. لا يحتوي كلمات المرور، وملفات الشواهد نفسها محفوظة في مخزن النظام.</p>' +
+    '<div class="bk-actions"><button class="btn primary" type="button" data-act="backup">تنزيل النسخة الاحتياطية</button></div></section>' +
+    '<section class="card bk-card"><h3>استعادة نسخة</h3>' +
+    '<ul class="restore-rules">' +
+    '<li>تُضاف البيانات الناقصة فقط، ولا يُعدَّل الموجود ولا يُحذف. وفي بيانات الملفات تُملأ الحقول الفارغة فقط.</li>' +
+    '<li>الحساب المحذوف يُعاد باسمه واسم دخوله، وبكلمة مرور مؤقتة جديدة تظهر لك بعد الاستعادة.</li>' +
+    '<li>الشاهد والتوقيع لا يُعادان إلا إن كان ملفهما ما زال محفوظًا، لأن النسخة لا تحوي الملفات نفسها.</li>' +
+    '</ul>' +
+    '<form class="col" data-action="restore-read"><label class="file-pick bk-pick"><input class="vh" name="file" type="file" accept=".json,application/json">' +
+    '<span class="btn">اختيار ملف النسخة</span><span class="muted file-name">لم يُختر ملف (backup-….json)</span></label>' +
+    '<div class="bk-actions"><button class="btn" type="submit">قراءة الملف ومقارنته</button></div></form>' +
+    '</section></div>' +
+    '<div id="restore-box"></div>';
+}
+
+/* ---------- استعادة صاحب الملف من نسخته (ZIP) ومسح ملفه ---------- */
+
+function groupBy(list, key) {
+  var out = {};
+  list.forEach(function (x) { (out[x[key]] = out[x[key]] || []).push(x); });
+  return out;
+}
+
+/**
+ * يقرأ ملف ZIP الذي نزّله صاحب الملف من «تنزيل النسخة الاحتياطية» ويقارنه بملفه الحالي.
+ * مجلدات العناصر «NN - اسم العنصر» فيها الشواهد، و«نسخة احتياطية.json» فيه عناوينها وأوصافها وروابط المجلدات والتقديرات.
+ */
+function readMyZip(file) {
+  var zip;
+  return loadJsZip().then(function () {
+    return window.JSZip.loadAsync(file);
+  }).catch(function (err) {
+    if (err && /أداة الضغط/.test(err.message)) throw err;
+    throw new Error('الملف ليس نسخة احتياطية صالحة (ZIP).');
+  }).then(function (z) {
+    zip = z;
+    var paths = [];
+    zip.forEach(function (p, entry) { if (!entry.dir) paths.push(p); });
+    var files = paths.map(function (p) {
+      var parts = p.split('/');
+      if (parts.length < 2) return null;
+      var m = /^(\d{1,2}) - /.exec(parts[parts.length - 2]);
+      return m ? { path: p, element: Number(m[1]), name: parts[parts.length - 1], dir: parts.slice(0, -1).join('/') } : null;
+    }).filter(Boolean);
+    var jsonPath = paths.filter(function (p) { return /نسخة احتياطية\.json$/.test(p); })[0];
+    return Promise.all([
+      jsonPath ? zip.file(jsonPath).async('string').then(JSON.parse).catch(function () { return null; }) : null,
+      call('getFile', [S.token, S.me.id])
+    ]).then(function (r) { return buildZipPlan(zip, files, r[0], r[1]); });
+  });
+}
+
+function buildZipPlan(zip, files, backup, current) {
+  var meta = {}, owner = null;
+  if (backup && backup.evidence) {
+    // صاحب النسخة: من تطابقت سجلات شواهده مع ملفات المجلدات أكثر (قد يختلف معرّفه إن أُعيد إنشاء حسابه).
+    var best = -1;
+    var byUser = groupBy(backup.evidence, 'user_id');
+    Object.keys(byUser).forEach(function (uid) {
+      var map = {}, hits = 0;
+      var byEl = groupBy(byUser[uid], 'element');
+      Object.keys(byEl).forEach(function (no) {
+        var inFolder = files.filter(function (f) { return f.element === Number(no); })[0];
+        if (!inFolder) return;
+        // الأسماء كما بُنيت عند التنزيل: بترتيب الرفع، والمكرر يأخذ رقمًا.
+        var rows = byEl[no].slice().sort(function (a, b) { return a.uploaded_at < b.uploaded_at ? -1 : a.uploaded_at > b.uploaded_at ? 1 : 0; });
+        var used = {};
+        rows.forEach(function (x) {
+          var base = safeName(x.file_name, 'شاهد'), name = base, n = 2;
+          while (used[name]) { name = base.replace(/(\.[^.]*)?$/, ' (' + n++ + ')$1'); }
+          used[name] = true;
+          var p = inFolder.dir + '/' + name;
+          if (zip.file(p)) { map[p] = x; hits++; }
+        });
+      });
+      if (hits > best) { best = hits; owner = uid; meta = map; }
+    });
+  }
+  var els = current.elements;
+  var plan = { zip: zip, add: [], links: [], ratings: [], existing: 0, outside: 0 };
+  files.forEach(function (f) {
+    var el = els[f.element - 1];
+    if (!el) { plan.outside++; return; }
+    var m = meta[f.path];
+    var fileName = m ? m.file_name : f.name;
+    var title = m ? m.title : f.name.replace(/\.[^.]*$/, '');
+    var dup = el.evidence.some(function (x) { return x.fileName === fileName && x.title === title; });
+    if (dup) { plan.existing++; return; }
+    plan.add.push({ path: f.path, element: f.element, title: title, fileName: fileName, description: m ? (m.description || '') : '', mime: m ? m.mime : '' });
+  });
+  if (owner && backup) {
+    (backup.links || []).forEach(function (x) {
+      var el = els[x.element - 1];
+      if (x.user_id === owner && el && !el.link && x.url) plan.links.push({ element: x.element, url: x.url });
+    });
+    (backup.ratings || []).forEach(function (x) {
+      var el = els[x.element - 1];
+      if (x.user_id === owner && el && !el.rating && x.rating > 0) plan.ratings.push({ element: x.element, rating: x.rating });
+    });
+  }
+  return plan;
+}
+
+function renderZipPlan(plan) {
+  S.zipPlan = plan;
+  var box = document.getElementById('zip-box');
+  if (!box) return;
+  var total = plan.add.length + plan.links.length + plan.ratings.length;
+  box.innerHTML = '<div class="bk-plan">' +
+    '<p><strong>ستُضاف:</strong> ' + d(plan.add.length) + ' شاهد، و' + d(plan.links.length) + ' رابط مجلد، و' + d(plan.ratings.length) + ' تقدير ذاتي.</p>' +
+    (plan.existing ? '<p class="muted">موجود في ملفك مسبقًا: ' + d(plan.existing) + ' شاهد.</p>' : '') +
+    (plan.outside ? '<p class="muted">لا يقابلها عنصر في ملفك الحالي (تغيّرت صفة صاحب الملف): ' + d(plan.outside) + ' شاهد.</p>' : '') +
+    (total
+      ? '<div class="bk-actions"><button class="btn primary" type="button" data-act="zip-apply">استعادة الناقص</button></div>'
+      : '<p class="muted">لا يوجد ما يُستعاد، فملفك يحوي كل ما في النسخة.</p>') +
+    '<span id="zip-status" class="muted" aria-live="polite"></span></div>';
+}
+
+function applyZipPlan(btn) {
+  var plan = S.zipPlan;
+  if (!plan) return;
+  var status = document.getElementById('zip-status');
+  var say = function (m) { if (status) status.textContent = m; };
+  btn.disabled = true;
+  var done = 0, failed = 0;
+  return plan.add.reduce(function (p, x, i) {
+    return p.then(function () {
+      say('جارٍ رفع الشاهد ' + d(i + 1) + ' من ' + d(plan.add.length) + '…');
+      return plan.zip.file(x.path).async('base64').then(function (b64) {
+        var mime = x.mime || MIME[ext(x.fileName)] || 'application/octet-stream';
+        if (b64.length * 0.75 > MAX_BYTES) throw new Error('كبير');
+        return call('uploadEvidence', [S.token, x.element, x.title, x.fileName, mime, b64, x.description]);
+      }).then(function () { done++; }, function () { failed++; });
+    });
+  }, Promise.resolve()).then(function () {
+    say('جارٍ استعادة الروابط والتقديرات…');
+    return Promise.all(plan.links.map(function (l) { return call('setElementLink', [S.token, l.element, l.url]).catch(function () { failed++; }); })
+      .concat(plan.ratings.map(function (r) { return call('setRating', [S.token, r.element, r.rating]).catch(function () { failed++; }); })));
+  }).then(function () {
+    S.zipPlan = null;
+    S.prefetch = null;
+    say('');
+    var box = document.getElementById('zip-box');
+    if (box) box.innerHTML = '<div class="bk-plan"><p><strong>تمت الاستعادة:</strong> ' + d(done) + ' شاهد، و' + d(plan.links.length) + ' رابط، و' + d(plan.ratings.length) + ' تقدير.' +
+      (failed ? ' وتعذّر ' + d(failed) + ' منها.' : '') + '</p></div>';
+    toast('تمت الاستعادة.');
+  });
+}
+
+function openWipe() {
+  openModal('<h2>مسح كل بيانات ملفك</h2>' +
+    '<p>سيُحذف نهائيًا: كل الشواهد وملفاتها، وروابط مجلدات العناصر، والتقدير الذاتي. يبقى حسابك وبيانات الملف وتوقيعك. لا يمكن التراجع، فنزّل نسخة احتياطية قبل المسح.</p>' +
+    '<form class="col" data-action="wipe"><label>للتأكيد اكتب كلمة «مسح»<input name="confirm" autocomplete="off" required></label>' +
+    '<div class="form-actions"><button class="btn" type="button" data-act="close">إلغاء</button><button class="btn danger" type="submit">مسح نهائي</button></div></form>');
+}
+
+function wipeMyFile(form) {
+  if (String(form.confirm.value).trim() !== 'مسح') return toast('اكتب كلمة «مسح» للتأكيد.', 'err');
+  var btn = form.querySelector('button[type="submit"]');
+  btn.disabled = true;
+  var failed = 0;
+  return call('getFile', [S.token, S.me.id]).then(function (f) {
+    var evs = [];
+    f.elements.forEach(function (el) { el.evidence.forEach(function (x) { evs.push(x.id); }); });
+    return evs.reduce(function (p, id, i) {
+      return p.then(function () {
+        btn.textContent = 'جارٍ حذف الشاهد ' + d(i + 1) + ' من ' + d(evs.length) + '…';
+        return call('deleteEvidence', [S.token, id]).then(function () { delete S.cache.ev[id]; }, function () { failed++; });
+      });
+    }, Promise.resolve()).then(function () {
+      btn.textContent = 'جارٍ المسح…';
+      return Promise.all(f.elements.filter(function (el) { return el.link; }).map(function (el) {
+        return call('setElementLink', [S.token, el.no, '']).catch(function () { failed++; });
+      }).concat(f.elements.filter(function (el) { return el.rating; }).map(function (el) {
+        return call('setRating', [S.token, el.no, 0]).catch(function () { failed++; });
+      })));
+    });
+  }).then(function () {
+    closeModal();
+    S.prefetch = null;
+    toast(failed ? 'اكتمل المسح، وتعذّر حذف ' + d(failed) + ' عنصر. أعد المحاولة.' : 'تم مسح بيانات ملفك.', failed ? 'err' : undefined);
+  }).catch(function (err) {
+    closeModal();
+    handleErr(err);
+  });
 }
 
 /* ---------- الاستعادة (مسؤول النظام) ---------- */
@@ -1498,7 +1749,11 @@ document.addEventListener('click', function (e) {
   if (a === 'elem') return openElement(Number(t.dataset.element));
   if (a === 'idea') {
     var titleInput = document.querySelector('.sheet input[name="title"]');
-    if (titleInput) { titleInput.value = t.dataset.idea; titleInput.focus(); }
+    if (titleInput) {
+      titleInput.value = t.dataset.idea;
+      titleInput.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      titleInput.focus({ preventScroll: true });
+    }
     return;
   }
   if (a === 'open') return go('elements', t.dataset.id);
@@ -1506,10 +1761,15 @@ document.addEventListener('click', function (e) {
   if (a === 'pwd') return openPasswordModal();
   if (a === 'show-register') return renderRegister();
   if (a === 'show-login') return renderLogin();
-  if (a === 'close') return closeModal();
+  if (a === 'close') {
+    var back = S.onCancel;
+    closeModal();
+    return back ? back() : undefined;
+  }
   if (a === 'confirm-yes') {
     var onYes = S.onConfirm;
     S.onConfirm = null;
+    S.onCancel = null;
     return onYes ? onYes() : closeModal();
   }
   if (a === 'print') return window.print();
@@ -1527,6 +1787,8 @@ document.addEventListener('click', function (e) {
   if (a === 'note') return openNote(t.dataset.id, t.dataset.name);
   if (a === 'restore-apply') return applyRestore();
   if (a === 'archive') return downloadMyArchive(t);
+  if (a === 'zip-apply') return applyZipPlan(t);
+  if (a === 'wipe') return openWipe();
   if (a === 'restore-csv') return downloadRestorePasswords();
   if (a === 'del-msg') {
     var msgId = t.dataset.id, teacher = t.dataset.teacher, tname = t.dataset.name;
@@ -1572,6 +1834,12 @@ document.addEventListener('input', function (e) {
 
 // إظهار حقل الكتابة عند اختيار «أخرى» في القوائم المنسدلة.
 document.addEventListener('change', function (e) {
+  var pick = e.target.closest && e.target.closest('.file-pick');
+  if (pick && e.target.files) {
+    var nameEl = pick.querySelector('.file-name');
+    if (nameEl) nameEl.textContent = e.target.files[0] ? e.target.files[0].name + ' · ' + fmtSize(e.target.files[0].size) : 'لم يُختر ملف';
+    return;
+  }
   var sel = e.target;
   if (sel.tagName !== 'SELECT' || sel.dataset.other !== '1') return;
   var other = sel.form && sel.form.querySelector('[name="' + sel.name + '__other"]');
@@ -1596,16 +1864,15 @@ document.addEventListener('submit', function (e) {
   if (action === 'link') {
     return call('setElementLink', [S.token, Number(form.dataset.element), val('url')]).then(function () {
       toast('تم حفظ رابط المجلد.');
-      closeModal();
-      return loadElements();
+      return refreshElement(Number(form.dataset.element));
     }).catch(handleErr);
   }
 
   if (action === 'edit-ev') {
+    var evNo = elementOf(form.dataset.id);
     return call('updateEvidence', [S.token, form.dataset.id, val('title'), raw('description').trim()]).then(function () {
       toast('تم حفظ الشاهد.');
-      closeModal();
-      return loadElements();
+      return refreshElement(evNo);
     }).catch(handleErr);
   }
 
@@ -1700,6 +1967,19 @@ document.addEventListener('submit', function (e) {
       return loadProfileView();
     }).catch(handleErr);
   }
+
+  if (action === 'zip-read') {
+    var zf = form.file.files[0];
+    if (!zf) return toast('اختر ملف النسخة أولًا.', 'err');
+    var zb = document.getElementById('zip-box');
+    if (zb) zb.innerHTML = '<div class="notice">جارٍ قراءة النسخة ومقارنتها بملفك…</div>';
+    return readMyZip(zf).then(renderZipPlan).catch(function (err) {
+      if (zb) zb.innerHTML = '';
+      handleErr(err);
+    });
+  }
+
+  if (action === 'wipe') return wipeMyFile(form);
 
   if (action === 'restore-read') {
     var bf = form.file.files[0];
