@@ -1,6 +1,6 @@
 // خدمة التخزين المؤقت لواجهة التطبيق. طلبات الخادم تمر دائمًا عبر الشبكة.
-var CACHE = 'ada-shell-v21';
-var SHELL = ['./', 'index.html', 'styles.css?v=21', 'lists.js?v=21', 'api.js?v=21', 'app.js?v=21', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'assets/header.png', 'assets/footer.png'];
+var CACHE = 'ada-shell-v22';
+var SHELL = ['./', 'index.html', 'styles.css?v=22', 'lists.js?v=22', 'api.js?v=22', 'app.js?v=22', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'assets/header.png', 'assets/footer.png'];
 
 self.addEventListener('install', function (event) {
   event.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(SHELL); }));

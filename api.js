@@ -9,20 +9,7 @@ var SUPABASE_KEY = 'sb_publishable_Eyv09toudVtIvWs3gPStig_okTgIVu2';
 /* يجب أن تطابق supabase/functions/_shared/auth-email.ts حرفيًا. */
 var AUTH_EMAIL_DOMAIN = 'users.performance-file.invalid';
 
-/* عناصر الأداء الأحد عشر وأوزانها (بطاقة الأداء الوظيفي للمعلم). */
-var ELEMENTS = [
-  { no: 1, name: 'أداء الواجبات الوظيفية', weight: 10 },
-  { no: 2, name: 'التفاعل مع المجتمع المهني', weight: 10 },
-  { no: 3, name: 'التفاعل مع أولياء الأمور', weight: 10 },
-  { no: 4, name: 'التنويع في استراتيجيات التدريس', weight: 10 },
-  { no: 5, name: 'تحسين نتائج المتعلمين', weight: 10 },
-  { no: 6, name: 'إعداد وتنفيذ خطة التعلم', weight: 10 },
-  { no: 7, name: 'توظيف تقنيات ووسائل التعلم المناسبة', weight: 10 },
-  { no: 8, name: 'تهيئة البيئة التعليمية', weight: 5 },
-  { no: 9, name: 'الإدارة الصفية', weight: 5 },
-  { no: 10, name: 'تحليل نتائج المتعلمين وتشخيص مستوياتهم', weight: 10 },
-  { no: 11, name: 'تنوع أساليب التقويم', weight: 10 }
-];
+/* عناصر الأداء حسب صفة صاحب الملف: ELEMENT_SETS وelementsFor في lists.js. */
 
 /* مسارات الصور في حاوية images، وأعمدتها في جدول profiles. */
 var IMAGE_SLOTS = {
@@ -100,9 +87,9 @@ function sbUuid() {
 }
 
 /** الجاهزية: شاهدان لكل عنصر يكملانه، موزونة بوزن العنصر. التقدير الذاتي: التقدير من ٥ موزونًا بالوزن. */
-function sbSummary(counts, ratings) {
+function sbSummary(counts, ratings, elements) {
   var ready = 0, self = 0, total = 0;
-  ELEMENTS.forEach(function (el, i) {
+  elements.forEach(function (el, i) {
     ready += el.weight * Math.min(counts[i], 2) / 2;
     self += el.weight * (ratings[i] || 0) / 5;
     total += counts[i];
@@ -182,11 +169,13 @@ API.getFile = function (_t, targetId) {
       sbUserRow(targetId),
       sb.from('evidence').select('id, element, title, description, file_name, mime, size, uploaded_at').eq('user_id', targetId).order('uploaded_at'),
       sb.from('ratings').select('element, rating').eq('user_id', targetId),
-      sb.from('links').select('element, url').eq('user_id', targetId)
+      sb.from('links').select('element, url').eq('user_id', targetId),
+      sb.from('profiles').select('owner_type').eq('user_id', targetId).maybeSingle()
     ]);
   }).then(function (r) {
     var owner = r[0], evs = sbData(r[1]), rts = sbData(r[2]), lks = sbData(r[3]);
-    var elements = ELEMENTS.map(function (el) {
+    var ownerType = (sbData(r[4]) || {}).owner_type || 'معلم';
+    var elements = elementsFor(ownerType).map(function (el) {
       var rating = rts.filter(function (x) { return x.element === el.no; })[0];
       var link = lks.filter(function (x) { return x.element === el.no; })[0];
       return {
@@ -200,9 +189,10 @@ API.getFile = function (_t, targetId) {
     });
     var summary = sbSummary(
       elements.map(function (el) { return el.evidence.length; }),
-      elements.map(function (el) { return el.rating; })
+      elements.map(function (el) { return el.rating; }),
+      elements
     );
-    return { owner: { id: owner.id, name: owner.name, username: owner.username }, editable: targetId === me, elements: elements, summary: summary };
+    return { owner: { id: owner.id, name: owner.name, username: owner.username }, ownerType: ownerType, editable: targetId === me, elements: elements, summary: summary };
   });
 };
 
@@ -486,7 +476,9 @@ API.listUsers = function () {
     var grades = sbData(r[4]) || [], profs = sbData(r[5]) || [];
     return users.map(function (u) {
       var counts = [], ratings = [];
-      ELEMENTS.forEach(function (el, i) {
+      var mine = sums.filter(function (x) { return x.user_id === u.id; });
+      var els = elementsFor(mine.length ? mine[0].owner_type : '');
+      els.forEach(function (el, i) {
         var row = sums.filter(function (x) { return x.user_id === u.id && x.element === el.no; })[0];
         counts[i] = row ? row.evidence_count : 0;
         ratings[i] = row ? row.rating : 0;
@@ -494,7 +486,7 @@ API.listUsers = function () {
       return {
         id: u.id, username: u.username, name: u.name, role: u.role, active: u.active,
         submitted: subs.some(function (s) { return s.user_id === u.id; }),
-        summary: sbSummary(counts, ratings),
+        summary: sbSummary(counts, ratings, els), ownerType: mine.length ? mine[0].owner_type : "",
         teacherIds: acc.filter(function (a) { return a.principal_id === u.id; }).map(function (a) { return a.teacher_id; }),
         grade: (function () { var g = grades.filter(function (x) { return x.teacher_id === u.id; })[0]; return g ? Number(g.grade) : null; })(),
         hasSig: profs.some(function (p) { return p.user_id === u.id && p.owner_sig_path; }),
@@ -545,7 +537,7 @@ API.changeMyPassword = function (_t, oldPassword, newPassword) {
 API.exportBackup = function () {
   var tables = ['users', 'profiles', 'evidence', 'ratings', 'links', 'access', 'submissions', 'messages', 'grades'];
   return Promise.all(tables.map(function (t) { return sb.from(t).select('*'); })).then(function (r) {
-    var out = { exportedAt: new Date().toISOString(), source: 'supabase', elements: ELEMENTS };
+    var out = { exportedAt: new Date().toISOString(), source: 'supabase', elementSets: ELEMENT_SETS };
     tables.forEach(function (t, i) { out[t] = sbData(r[i], 'تعذّر تجهيز النسخة الاحتياطية.'); });
     return out;
   });

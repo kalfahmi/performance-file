@@ -188,6 +188,17 @@ await expect('مسؤول النظام يعدّل بيانات ملف معلم', 
 await expect('مسؤول النظام يحذف رسالة', 'A', `delete from messages where to_id='${U.T1}' and from_id='${U.P}'`, r => r.affected === 1);
 await expect('المعلم لا يحذف رسائله', 'T1', `delete from messages where to_id='${U.T1}'`, none);
 
+// عناصر حسب الصفة (migration 0006)
+await expect('المعلم يضع صفته وكيلًا', 'T1', `update profiles set owner_type='وكيل مدرسة' where user_id='${U.T1}'`, r => r.affected === 1);
+await expect('ملخص الوكيل ١٩ عنصرًا', 'T1', `select count(*) n from file_summaries()`, count(19));
+await expect('الصفة تظهر في الملخص', 'T1', `select count(*) n from file_summaries() where owner_type='وكيل مدرسة'`, count(19));
+await expect('شاهد في العنصر ١٩ مقبول', 'T1', `insert into evidence (user_id, element, title, file_path, file_name, mime, size) values ('${U.T1}',19,'x','${U.T1}/e19','x','a',1)`, r => !r.error);
+await expect('العنصر ٢٠ مرفوض', 'T1', `insert into ratings (user_id, element, rating) values ('${U.T1}',20,3)`, denied);
+await expect('المعلم يضع صفته موجهًا', 'T1', `update profiles set owner_type='موجه طلابي' where user_id='${U.T1}'`, r => r.affected === 1);
+await expect('ملخص الموجه ١٣ عنصرًا', 'T1', `select count(*) n from file_summaries()`, count(13));
+await expect('العودة إلى معلم', 'T1', `update profiles set owner_type='معلم' where user_id='${U.T1}'`, r => r.affected === 1);
+await expect('ملخص المعلم ١١ عنصرًا', 'T1', `select count(*) n from file_summaries()`, count(11));
+
 // دوال الخادم (service_role)
 await expect('دوال الخادم تعدّ الحسابات', 'service', 'select count(*) n from users', count(6));
 await expect('اسم مستخدم مكرر مرفوض', 'service', `insert into users (id, username, name, role) values ('${U.T3}','dup','x','teacher')`, denied);

@@ -228,3 +228,6 @@ table.dt thead th { background: var(--navy); color: #fff; font-weight: 600; }
 .msg p { margin: 8px 0 0; white-space: pre-wrap; }
 .other-input { margin-top: 6px; }
 input[readonly] { background: var(--soft); color: var(--ink); cursor: not-allowed; }
+/* جدول العناصر: الأعمدة القصيرة في سطر واحد، والاسم وحده يلتف. يبقى ١٩ عنصرًا في ورقة واحدة. */
+table.dt th, table.dt td:not(:nth-child(2)) { white-space: nowrap; }
+table.dt td:nth-child(2) { width: 100%; }

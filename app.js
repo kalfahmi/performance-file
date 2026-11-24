@@ -357,7 +357,7 @@ function renderElements() {
     '<div class="notice">' + (mine ? 'اضغط على أي عنصر لرفع شواهده وتقييم نفسك فيه.' : 'تعرض هذه الصفحة ملف المعلم للقراءة فقط.') + '</div>' +
     '<div class="stats">' +
     '<div class="card stat"><span class="muted">جاهزية الشواهد</span><span class="stat-num">' + pct(s.readiness) + '</span><div class="meter"><span style="width:' + s.readiness + '%"></span></div></div>' +
-    '<div class="card stat"><span class="muted">عناصر مكتملة</span><span class="stat-num">' + d(complete) + ' / ' + d(11) + '</span><span class="muted">شاهدان فأكثر لكل عنصر</span></div>' +
+    '<div class="card stat"><span class="muted">عناصر مكتملة</span><span class="stat-num">' + d(complete) + ' / ' + d(f.elements.length) + '</span><span class="muted">شاهدان فأكثر لكل عنصر</span></div>' +
     '<div class="card stat"><span class="muted">الشواهد المضافة</span><span class="stat-num">' + d(s.evidenceTotal) + '</span><span class="muted">التقدير الذاتي الاسترشادي: ' + pct(s.selfScore) + '</span></div>' +
     '</div>' +
     '<div class="grid">' + cards + '</div>';
@@ -381,7 +381,8 @@ function openElement(no) {
           (mine ? '<button class="btn small" type="button" data-act="edit-ev" data-id="' + esc(x.id) + '">تعديل</button>' : '') + (mine ? '<button class="btn small danger" type="button" data-act="del" data-id="' + esc(x.id) + '">حذف</button>' : '') + '</span></li>';
       }).join('') + '</ul>'
     : '<p class="muted">لا توجد شواهد لهذا العنصر بعد.</p>';
-  var ideas = (EVIDENCE_IDEAS[no] || []).concat(GENERAL_IDEAS);
+  // أفكار العناصر المرقّمة للمعلم فقط، ولغيره الأفكار العامة.
+  var ideas = ((!f.ownerType || f.ownerType === 'معلم') ? (EVIDENCE_IDEAS[no] || []) : []).concat(GENERAL_IDEAS);
   var ideaBox = mine
     ? '<div class="section-box"><h3>أفكار للشواهد</h3><div class="chips">' + ideas.map(function (t) {
         return '<button class="chip" type="button" data-act="idea" data-idea="' + esc(t) + '">' + esc(t) + '</button>';
@@ -625,7 +626,7 @@ function renderProfile() {
     '<div class="page-head"><h2>' + esc(own ? 'بيانات الملف' : 'بيانات ملف ' + p.owner.name) + '</h2></div>' +
     (!own && S.me.role === 'admin' ? '<div class="notice">تعدّل بيانات ملف ' + esc(p.owner.name) + ' بصفتك مسؤول النظام.</div>' : '') +
     '<section class="card"><h3>المعلومات الأساسية</h3>' + form +
-    '<p class="muted" style="margin:6px 0 0">إذا كانت المدرسة مسجلة باسم مديرها في النظام، يُكتب اسم المدير تلقائيًا ولا يُعدَّل. والمدرسة وإدارة التعليم واسم المدير تظهر في المعاينة والطباعة.</p></section>' +
+    '<p class="muted" style="margin:6px 0 0">«صفة صاحب الملف» تحدد عناصر الأداء: المعلم ١١ عنصرًا، والموجه الطلابي ١٣، والوكيل والمدير ١٩. تغييرها لا يحذف الشواهد، لكن شواهد العناصر غير الموجودة في الصفة الجديدة لا تظهر حتى تعود إليها. إذا كانت المدرسة مسجلة باسم مديرها، يُكتب اسم المدير تلقائيًا ولا يُعدَّل.</p></section>' +
     '<section class="card"><h3>التوقيع</h3><div class="img-grid">' + imgs + '</div>' +
     '<p class="muted" style="margin:0">توقيعك يضيفه أنت أو مسؤول النظام، ويظهر في معاينة الملف وطباعته. توقيع المدير والختم يضيفهما المدير في ملفه أو مسؤول النظام.</p></section>' +
     submit;
@@ -880,9 +881,9 @@ function docHTML(f, p, imgs) {
     '<div><h1>ملف الأداء الوظيفي</h1><p>' + esc(pr.ownerName) + ' · ' + esc(pr.term) + ' · ' + esc(pr.year) + '</p></div></div>' +
     '<section class="doc-sec"><h3>بيانات الملف</h3><table class="kv">' + kv + '</table></section>' +
     '<section class="doc-sec"><h3>ملخص الأداء</h3><table class="kv"><tr><th>جاهزية الشواهد</th><td>' + pct(s.readiness) +
-    '</td><th>عناصر مكتملة</th><td>' + d(complete) + ' / ' + d(11) + '</td></tr><tr><th>الشواهد المضافة</th><td>' + d(s.evidenceTotal) +
+    '</td><th>عناصر مكتملة</th><td>' + d(complete) + ' / ' + d(f.elements.length) + '</td></tr><tr><th>الشواهد المضافة</th><td>' + d(s.evidenceTotal) +
     '</td><th>التقدير الذاتي الاسترشادي</th><td>' + pct(s.selfScore) + '</td></tr></table></section>' +
-    '<section class="doc-sec"><h3>عناصر الأداء</h3><table class="dt"><thead><tr><th>#</th><th>العنصر</th><th>الوزن</th><th>الشواهد</th><th>الحالة</th><th>التقدير الذاتي</th></tr></thead><tbody>' + rows + '</tbody></table></section>' +
+    '<section class="doc-sec doc-elements"><h3>عناصر الأداء</h3><table class="dt"><thead><tr><th>#</th><th>العنصر</th><th>الوزن</th><th>الشواهد</th><th>الحالة</th><th>التقدير الذاتي</th></tr></thead><tbody>' + rows + '</tbody></table></section>' +
     '</section>' +
     '<div class="doc-flow">' + evidenceHTML(f, imgs) + '</div>' +
     '<section class="a4 a4-last">' +
@@ -932,6 +933,15 @@ function paginateDoc(root) {
       body.appendChild(g);
       return g;
     };
+    // ورقة البيانات: إن لم يتسع جدول العناصر (١٩ عنصرًا للوكيل والمدير) انتقل إلى ورقة خاصة بعدها.
+    var first = root.querySelector('.a4-first');
+    var table = first && first.querySelector('.doc-elements');
+    if (table && first.scrollHeight > first.clientHeight + 1) {
+      var tSheet = document.createElement('section');
+      tSheet.className = 'a4 a4-el';
+      tSheet.appendChild(table);
+      first.parentNode.insertBefore(tSheet, first.nextSibling);
+    }
     Array.prototype.slice.call(flow.children).forEach(function (el, i) {
       newSheet();
       if (i === 0) {
@@ -1088,7 +1098,7 @@ function renderTeachers() {
   var list = S.users.filter(function (u) { return u.role === 'teacher'; });
   var rows = list.map(function (u) {
     var s = u.summary;
-    return '<tr><td>' + esc(u.name) + '<br><span class="muted">' + (u.submitted ? 'أرسل ملفه إلى المدير' : 'لم يرسل ملفه بعد') + '</span></td><td dir="ltr">' + esc(u.username) + '</td>' +
+    return '<tr><td>' + esc(u.name) + (u.ownerType && u.ownerType !== 'معلم' ? ' <span class="pill pill-partial">' + esc(u.ownerType) + '</span>' : '') + '<br><span class="muted">' + (u.submitted ? 'أرسل ملفه إلى المدير' : 'لم يرسل ملفه بعد') + '</span></td><td dir="ltr">' + esc(u.username) + '</td>' +
       '<td><div class="meter"><span style="width:' + s.readiness + '%"></span></div><span class="muted">' + pct(s.readiness) + '</span></td>' +
       '<td>' + d(s.evidenceTotal) + '</td><td>' + (u.active ? 'فعّال' : 'موقوف') + '</td>' +
       '<td><div class="grade-cell"><input class="grade-input" type="number" inputmode="decimal" min="0" max="5" step="0.5" dir="ltr" data-id="' + esc(u.id) + '" value="' + (u.grade === null ? '' : u.grade) + '" aria-label="الدرجة المستحقة من ٥ للمعلم ' + esc(u.name) + '"><span class="grade-state muted" data-for="' + esc(u.id) + '"></span></div></td>' +
