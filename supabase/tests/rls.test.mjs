@@ -132,6 +132,14 @@ await expect('المعلم يرفع شاهده', 'T1', `insert into storage.obje
 await expect('مدير غير مسند لا يقرأ ملفات المعلم', 'P2', `select count(*) n from storage.objects`, count(0));
 await expect('المدير لا يحذف ملف المعلم', 'P', `delete from storage.objects where name='${U.T1}/a.pdf'`, none);
 
+// ملخصات الملفات (file_summaries)
+await expect('المعلم يرى ملخص ملفه فقط', 'T1', `select count(*) n from file_summaries()`, count(11));
+await expect('ملخص المعلم يعدّ شواهده', 'T1', `select sum(evidence_count) n from file_summaries()`, count(1));
+await expect('المدير يرى ملخص معلمه المسند فقط', 'P', `select count(distinct user_id) n from file_summaries()`, count(1));
+await expect('مسؤول النظام يرى ملخصات كل المعلمين', 'A', `select count(distinct user_id) n from file_summaries()`, count(3));
+await expect('الحساب الموقوف لا يرى ملخصًا', 'T2', `select count(*) n from file_summaries()`, count(0));
+await expect('الزائر لا يستدعي الملخصات', 'anon', `select count(*) n from file_summaries()`, denied);
+
 // دوال الخادم (service_role)
 await expect('دوال الخادم تعدّ الحسابات', 'service', 'select count(*) n from users', count(6));
 await expect('اسم مستخدم مكرر مرفوض', 'service', `insert into users (id, username, name, role) values ('${U.T3}','dup','x','teacher')`, denied);

@@ -1,8 +1,6 @@
 /* مشروع الاداء الوظيفي — واجهة التطبيق (PWA).
- * تتصل بخادم Google Apps Script عبر طلبات POST بصيغة JSON.
- * إذا تغيّر رابط النشر في Apps Script فحدّث API_URL هنا. */
+ * الاتصال بالخادم (Supabase) في api.js عبر الدالة call(fn, args). */
 
-var API_URL = 'https://script.google.com/macros/s/AKfycbyVtKFCBZGYzVaj5o7JwxljHpfO234jgEbtmkC0mll0DrVvxWOe3maGosskzKZu4txRjg/exec';
 var SCHOOL = 'ابتدائية عروة بن الزبير';
 var EDU = 'الإدارة العامة للتعليم بمحافظة جدة';
 var MAX_BYTES = 4 * 1024 * 1024;
@@ -37,29 +35,6 @@ var EVIDENCE_IDEAS = {
   11: ['نماذج اختبارات متنوعة', 'روبرك تقويم', 'ملف إنجاز الطلاب']
 };
 var S = { token: null, me: null, view: null, inFile: false, targetId: null, file: null, profile: null, users: [], sig: null, cache: { img: {}, ev: {}, pdf: {} } };
-
-/* ---------- الاتصال بالخادم ---------- */
-
-function call(fn, args) {
-  var ctrl = new AbortController();
-  var timer = setTimeout(function () { ctrl.abort(); }, 20000);
-  return fetch(API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ fn: fn, args: args || [] }),
-    signal: ctrl.signal
-  }).then(function (r) {
-    clearTimeout(timer);
-    if (!r.ok) throw new Error('تعذّر الوصول إلى الخادم (' + r.status + ').');
-    return r.json();
-  }).then(function (res) {
-    if (res.error) throw new Error(res.error);
-    return res.result;
-  }, function () {
-    clearTimeout(timer);
-    throw new Error('تعذّر الاتصال بالخادم. تحقق من الإنترنت ثم أعد المحاولة.');
-  });
-}
 
 /* ---------- أدوات ---------- */
 
@@ -153,10 +128,9 @@ function downloadBlob(blob, name) {
 /* ---------- الدخول والإعداد ---------- */
 
 function boot() {
-  S.token = sessionStorage.getItem('ptoken');
-  if (!S.token) return showLoginOrSetup();
   document.getElementById('app').innerHTML = '<div class="notice">جارٍ التحميل…</div>';
-  return call('resume', [S.token]).then(function (r) {
+  return call('resume').then(function (r) {
+    S.token = r.token;
     S.me = r.user;
     S.prefetch = r.file;
     enter();
@@ -183,8 +157,8 @@ function renderSetup() {
     '<form class="col" data-action="setup">' +
     '<label>الاسم الكامل<input name="name" required></label>' +
     '<label>اسم الدخول<input name="username" dir="ltr" required></label>' +
-    '<label>كلمة المرور<input name="password" type="password" minlength="6" required></label>' +
-    '<label>تأكيد كلمة المرور<input name="confirm" type="password" minlength="6" required></label>' +
+    '<label>كلمة المرور<input name="password" type="password" minlength="8" required></label>' +
+    '<label>تأكيد كلمة المرور<input name="confirm" type="password" minlength="8" required></label>' +
     '<button class="btn primary block" type="submit">إنشاء الحساب</button>' +
     '</form></section>';
 }
@@ -788,7 +762,7 @@ function renderBackup() {
   main().innerHTML =
     '<div class="page-head"><h2>النسخ الاحتياطي</h2></div>' +
     '<section class="card"><h3>تنزيل نسخة احتياطية</h3>' +
-    '<p class="muted" style="margin:0">تشمل النسخة: ' + who + '، من بيانات الملف والتقديرات وسجلات الشواهد. لا تحتوي كلمات المرور. ملفات الشواهد نفسها محفوظة في Google Drive داخل مجلد «' + esc('ملف الأداء الوظيفي - الشواهد') + '».</p>' +
+    '<p class="muted" style="margin:0">تشمل النسخة: ' + who + '، من بيانات الملف والتقديرات وسجلات الشواهد. لا تحتوي كلمات المرور. ملفات الشواهد نفسها محفوظة في مخزن ملفات النظام، ويُذكر مسار كل ملف في النسخة.</p>' +
     '<div><button class="btn primary" type="button" data-act="backup">تنزيل نسخة احتياطية (JSON)</button></div></section>';
 }
 
@@ -850,7 +824,7 @@ function renderAccounts() {
     '<form class="row" data-action="account">' +
     '<label>الاسم الكامل<input name="name" required></label>' +
     '<label>اسم الدخول<input name="username" dir="ltr" required></label>' +
-    '<label>كلمة المرور الأولية<input name="password" type="password" minlength="6" required></label>' +
+    '<label>كلمة المرور الأولية<input name="password" type="password" minlength="8" required></label>' +
     '<label>الصلاحية<select name="role"><option value="teacher">معلم</option><option value="principal">مدير</option><option value="admin">مسؤول النظام</option></select></label>' +
     '<button class="btn primary" type="submit">إنشاء الحساب</button></form>' +
     '<p class="muted">المعلم يرى ملفه فقط. المدير يرى المعلمين الذين تسندهم إليه أنت. مسؤول النظام يرى الجميع.</p></section>' +
@@ -879,8 +853,8 @@ function openPasswordModal() {
   openModal('<h2>تغيير كلمة المرور</h2>' +
     '<form class="col" data-action="password">' +
     '<label>كلمة المرور الحالية<input name="old" type="password" required></label>' +
-    '<label>كلمة المرور الجديدة<input name="next" type="password" minlength="6" required></label>' +
-    '<label>تأكيد الجديدة<input name="confirm" type="password" minlength="6" required></label>' +
+    '<label>كلمة المرور الجديدة<input name="next" type="password" minlength="8" required></label>' +
+    '<label>تأكيد الجديدة<input name="confirm" type="password" minlength="8" required></label>' +
     '<div style="display:flex;gap:10px;justify-content:flex-end">' +
     '<button class="btn" type="button" data-act="close">إلغاء</button>' +
     '<button class="btn primary" type="submit">حفظ</button></div></form>');
@@ -889,8 +863,8 @@ function openPasswordModal() {
 function openResetModal(id, name) {
   openModal('<h2>كلمة مرور جديدة</h2><p class="muted">لـ ' + esc(name) + '</p>' +
     '<form class="col" data-action="reset" data-id="' + esc(id) + '">' +
-    '<label>كلمة المرور الجديدة<input name="next" type="password" minlength="6" required></label>' +
-    '<label>تأكيد الكلمة<input name="confirm" type="password" minlength="6" required></label>' +
+    '<label>كلمة المرور الجديدة<input name="next" type="password" minlength="8" required></label>' +
+    '<label>تأكيد الكلمة<input name="confirm" type="password" minlength="8" required></label>' +
     '<div style="display:flex;gap:10px;justify-content:flex-end">' +
     '<button class="btn" type="button" data-act="close">إلغاء</button>' +
     '<button class="btn primary" type="submit">حفظ</button></div></form>');
