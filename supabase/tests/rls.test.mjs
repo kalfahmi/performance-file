@@ -1,12 +1,17 @@
 import { PGlite } from '@electric-sql/pglite';
 import fs from 'node:fs';
 
-const migration = fs.readFileSync(process.argv[2], 'utf8');
+// يُطبَّق كل ملف في مجلد migrations بترتيب اسمه، كما في Supabase.
+const dir = process.argv[2];
+const migrations = fs.readdirSync(dir).filter(f => f.endsWith('.sql')).sort()
+  .map(f => fs.readFileSync(dir + '/' + f, 'utf8'));
 const db = new PGlite();
 
 // بديل مبسّط لما توفره Supabase: الأدوار، auth.uid()، وجداول التخزين.
+// مثل مشاريع Supabase الجديدة: لا صلاحيات تلقائية على الجداول، ولا تنفيذ تلقائي للدوال.
 await db.exec(`
-  create role anon nologin; create role authenticated nologin;
+  create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
+  alter default privileges revoke execute on functions from public;
   create schema auth; create schema storage;
   create table auth.users (id uuid primary key);
   create function auth.uid() returns uuid language sql stable as
@@ -14,15 +19,12 @@ await db.exec(`
   create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
   create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text references storage.buckets(id), name text, unique (bucket_id, name));
   alter table storage.objects enable row level security;
-  grant usage on schema auth, storage to authenticated, anon;
-  grant execute on function auth.uid() to authenticated, anon;
+  grant usage on schema auth, storage to authenticated, anon, service_role;
+  grant execute on function auth.uid() to authenticated, anon, service_role;
+  grant usage on schema public to authenticated, anon, service_role;
+  grant select, insert, update, delete on storage.objects to authenticated, service_role;
 `);
-await db.exec(migration);
-await db.exec(`
-  grant usage on schema public to authenticated, anon;
-  grant select, insert, update, delete on all tables in schema public to authenticated;
-  grant select, insert, update, delete on storage.objects to authenticated;
-`);
+for (const m of migrations) await db.exec(m);
 
 const U = {
   A:  '00000000-0000-0000-0000-00000000000a',
@@ -50,6 +52,7 @@ async function as(who, sql) {
   await db.exec('begin');
   try {
     if (who === 'anon') await db.exec(`set local role anon`);
+    else if (who === 'service') await db.exec(`set local role service_role`);
     else await db.exec(`set local role authenticated; select set_config('request.jwt.claim.sub', '${U[who]}', true);`);
     const r = await db.query(sql);
     await db.exec('commit');
@@ -128,6 +131,12 @@ await expect('مسار غير صالح مرفوض', 'T1', `insert into storage.o
 await expect('المعلم يرفع شاهده', 'T1', `insert into storage.objects (bucket_id, name) values ('evidence','${U.T1}/b.pdf')`, r => !r.error);
 await expect('مدير غير مسند لا يقرأ ملفات المعلم', 'P2', `select count(*) n from storage.objects`, count(0));
 await expect('المدير لا يحذف ملف المعلم', 'P', `delete from storage.objects where name='${U.T1}/a.pdf'`, none);
+
+// دوال الخادم (service_role)
+await expect('دوال الخادم تعدّ الحسابات', 'service', 'select count(*) n from users', count(6));
+await expect('اسم مستخدم مكرر مرفوض', 'service', `insert into users (id, username, name, role) values ('${U.T3}','dup','x','teacher')`, denied);
+await expect('دوال الخادم تضع توقيع المدير', 'service', `update profiles set principal_sig_path='${U.T2}/principal_sig.png' where user_id='${U.T2}'`, r => r.affected === 1);
+await expect('دوال الخادم تحذف إسنادًا', 'service', `delete from access where principal_id='${U.P2}'`, r => r.affected === 1);
 
 console.log(`\n${pass} نجح، ${fail} فشل`);
 process.exit(fail ? 1 : 0);

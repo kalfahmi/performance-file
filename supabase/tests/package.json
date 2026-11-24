@@ -2,6 +2,6 @@
   "name": "performance-file-rls-tests",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node rls.test.mjs ../migrations/20261124000000_init.sql" },
+  "scripts": { "test": "node rls.test.mjs ../migrations" },
   "devDependencies": { "@electric-sql/pglite": "0.2.17" }
 }
