@@ -334,3 +334,6 @@ table.dt td:nth-child(2) { width: 100%; }
 .arch-btns, .head-btns { display: flex; gap: 8px; flex-wrap: wrap; }
 .choice { display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
 .choice .muted { font-size: 13px; }
+/* جدول العناصر المضغوط في ورقة الملخص (١٩ عنصرًا). */
+table.dt.compact { font-size: 12px; }
+table.dt.compact th, table.dt.compact td { padding: 3.5px 8px; line-height: 1.45; }

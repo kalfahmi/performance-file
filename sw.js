@@ -1,6 +1,6 @@
 // خدمة التخزين المؤقت لواجهة التطبيق. طلبات الخادم تمر دائمًا عبر الشبكة.
-var CACHE = 'ada-shell-v32';
-var SHELL = ['./', 'index.html', 'styles.css?v=32', 'lists.js?v=32', 'ideas.js?v=32', 'api.js?v=32', 'restore.js?v=32', 'app.js?v=32', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'assets/header.png', 'assets/footer.png', 'assets/moe-logo.png'];
+var CACHE = 'ada-shell-v33';
+var SHELL = ['./', 'index.html', 'styles.css?v=33', 'lists.js?v=33', 'ideas.js?v=33', 'api.js?v=33', 'restore.js?v=33', 'app.js?v=33', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'assets/header.png', 'assets/footer.png', 'assets/moe-logo.png'];
 
 self.addEventListener('install', function (event) {
   event.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(SHELL); }));

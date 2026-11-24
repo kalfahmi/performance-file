@@ -1174,11 +1174,28 @@ function paginateDoc(root) {
     // ورقة البيانات: إن لم يتسع جدول العناصر (١٩ عنصرًا للوكيل والمدير) انتقل إلى ورقة خاصة بعدها.
     var first = root.querySelector('.a4-first');
     var table = first && first.querySelector('.doc-elements');
+    // يبقى من الجدول ما يتسع في ورقة الملخص، ويُكمَل الباقي في الورقة التالية بعنوان «(تابع)» ورأس الجدول نفسه.
+    // أولًا: جدول أصغر قليلًا (١٩ عنصرًا للوكيل والمدير) حتى يتسع كله مع الملخص.
+    if (table && first.scrollHeight > first.clientHeight + 1) table.querySelector('table').classList.add('compact');
     if (table && first.scrollHeight > first.clientHeight + 1) {
       var tSheet = document.createElement('section');
       tSheet.className = 'a4 a4-el';
-      tSheet.appendChild(table);
       first.parentNode.insertBefore(tSheet, first.nextSibling);
+      var rest = table.cloneNode(true);
+      var h3 = rest.querySelector('h3');
+      if (h3) h3.insertAdjacentHTML('beforeend', ' <span class="muted cont">(تابع)</span>');
+      var src = table.querySelector('tbody'), dst = rest.querySelector('tbody');
+      dst.innerHTML = '';
+      while (first.scrollHeight > first.clientHeight + 1 && src.rows.length) {
+        dst.insertBefore(src.rows[src.rows.length - 1], dst.firstChild);
+      }
+      // إن لم يتسع إلا صفان أو أقل، ينتقل الجدول كله إلى الورقة التالية.
+      if (src.rows.length <= 2) {
+        while (src.rows.length) dst.insertBefore(src.rows[src.rows.length - 1], dst.firstChild);
+        table.remove();
+        if (h3) h3.querySelector('.cont').remove();
+      }
+      tSheet.appendChild(rest);
     }
     Array.prototype.slice.call(flow.children).forEach(function (el, i) {
       newSheet();
