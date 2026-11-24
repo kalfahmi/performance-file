@@ -283,9 +283,9 @@ function openElement(no) {
   if (!el) return;
   var list = el.evidence.length
     ? '<ul class="ev-list">' + el.evidence.map(function (x) {
-        return '<li><span><strong>' + esc(x.title) + '</strong><br><span class="muted">' + esc(x.fileName) + ' · ' + fmtSize(x.size) + ' · ' + fmtDate(x.uploadedAt) + '</span></span>' +
+        return '<li><span><strong>' + esc(x.title) + '</strong>' + (x.description ? '<br><span>' + esc(x.description) + '</span>' : '') + '<br><span class="muted">' + esc(x.fileName) + ' · ' + fmtSize(x.size) + ' · ' + fmtDate(x.uploadedAt) + '</span></span>' +
           '<span style="display:flex;gap:8px"><button class="btn small" type="button" data-act="view" data-id="' + esc(x.id) + '">عرض</button>' +
-          (mine ? '<button class="btn small danger" type="button" data-act="del" data-id="' + esc(x.id) + '">حذف</button>' : '') + '</span></li>';
+          (mine ? '<button class="btn small" type="button" data-act="edit-ev" data-id="' + esc(x.id) + '">تعديل</button>' : '') + (mine ? '<button class="btn small danger" type="button" data-act="del" data-id="' + esc(x.id) + '">حذف</button>' : '') + '</span></li>';
       }).join('') + '</ul>'
     : '<p class="muted">لا توجد شواهد لهذا العنصر بعد.</p>';
   var ideas = (EVIDENCE_IDEAS[no] || []).concat(GENERAL_IDEAS);
@@ -297,6 +297,7 @@ function openElement(no) {
   var upload = mine
     ? '<div class="section-box"><h3>رفع شاهد جديد</h3><form class="row" data-action="upload" data-element="' + no + '">' +
       '<label>عنوان الشاهد<input name="title" maxlength="120" required></label>' +
+      '<label>نبذة عن الشاهد (اختياري)<textarea name="description" maxlength="300" rows="2"></textarea></label>' +
       '<label>الملف<input name="file" type="file" required accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.doc,.docx,.xls,.xlsx,.ppt,.pptx"></label>' +
       '<button class="btn primary" type="submit">رفع الشاهد</button></form>' +
       '<p class="muted" style="margin:0">الحد الأقصى ٤ ميغابايت. الصيغ: PDF وصور وWord وExcel وPowerPoint.</p></div>'
@@ -308,9 +309,15 @@ function openElement(no) {
           (el.rating === v ? 'true' : 'false') + '" title="' + RATING_LABEL[v] + '">' + d(v) + '</button>';
       }).join('') + '<span class="muted">' + RATING_LABEL[el.rating] + '</span></div></div>'
     : '<p class="muted">التقدير الذاتي: ' + RATING_LABEL[el.rating] + '</p>';
+  var linkBox = mine
+    ? '<div class="section-box"><h3>رابط مجلد الشواهد (اختياري)</h3><form class="row" data-action="link" data-element="' + no + '">' +
+      '<label>رابط مجلد Google Drive<input name="url" type="url" maxlength="300" value="' + esc(el.link || '') + '" placeholder="https://drive.google.com/..."></label>' +
+      '<button class="btn primary" type="submit">حفظ الرابط</button></form>' +
+      '<p class="muted" style="margin:0">يظهر في الملف المطبوع رمز QR يفتح الشواهد كاملة. اترك الحقل فارغًا لإزالته.</p></div>'
+    : (el.link ? '<div class="section-box"><h3>مجلد الشواهد</h3><a href="' + esc(el.link) + '" target="_blank" rel="noopener">فتح مجلد الشواهد</a></div>' : '');
   openModal('<div class="modal-head"><div><span class="muted">العنصر ' + d(no) + ' · الوزن ' + d(el.weight) + '٪</span><h2>' + esc(el.name) + '</h2></div>' +
     '<button class="btn small" type="button" data-act="close">إغلاق</button></div>' +
-    '<div class="section-box"><h3>الشواهد</h3>' + list + '</div>' + ideaBox + upload + ratings);
+    '<div class="section-box"><h3>الشواهد</h3>' + list + '</div>' + ideaBox + upload + linkBox + ratings);
 }
 
 function readRatingAndSave(no, value) {
@@ -332,7 +339,8 @@ function upload(form) {
   btn.disabled = true;
   btn.textContent = 'جارٍ الرفع…';
   return readBase64(file).then(function (b64) {
-    return call('uploadEvidence', [S.token, Number(form.dataset.element), title, file.name, mime, b64]);
+    var desc = String(form.querySelector('[name="description"]').value || '').trim();
+    return call('uploadEvidence', [S.token, Number(form.dataset.element), title, file.name, mime, b64, desc]);
   }).then(function () {
     toast('تم رفع الشاهد.');
     closeModal();
@@ -342,6 +350,20 @@ function upload(form) {
     btn.textContent = 'رفع الشاهد';
     handleErr(err);
   });
+}
+
+function openEvidenceEdit(id) {
+  var x = null;
+  S.file.elements.forEach(function (el) {
+    el.evidence.forEach(function (e) { if (e.id === id) x = e; });
+  });
+  if (!x) return;
+  openModal('<div class="modal-head"><div><h2>تعديل الشاهد</h2></div>' +
+    '<button class="btn small" type="button" data-act="close">إغلاق</button></div>' +
+    '<form class="col" data-action="edit-ev" data-id="' + esc(id) + '">' +
+    '<label>عنوان الشاهد<input name="title" maxlength="120" required value="' + esc(x.title) + '"></label>' +
+    '<label>نبذة عن الشاهد (اختياري)<textarea name="description" maxlength="300" rows="3">' + esc(x.description || '') + '</textarea></label>' +
+    '<div class="form-actions"><button class="btn" type="button" data-act="close">إلغاء</button><button class="btn primary" type="submit">حفظ</button></div></form>');
 }
 
 function viewEvidence(id) {
@@ -505,11 +527,11 @@ function loadPreview() {
     r[0].elements.forEach(function (el) {
       el.evidence.forEach(function (x) { if (/^image\//.test(x.mime)) evs.push(x); });
     });
-    return Promise.all(evs.map(function (x) {
+    return Promise.all([loadQrFor(r[0].elements, imgs), Promise.all(evs.map(function (x) {
       return call('getEvidenceFile', [S.token, x.id]).then(function (f) {
         imgs['ev:' + x.id] = 'data:' + f.mime + ';base64,' + f.base64;
       });
-    })).then(function () {
+    }))]).then(function () {
       main().innerHTML =
         '<div class="page-head no-print"><h2>معاينة الملف للطباعة</h2>' +
         '<button class="btn primary" type="button" data-act="print">طباعة / حفظ PDF</button></div>' +
@@ -556,6 +578,35 @@ function docHTML(f, p, imgs) {
     '</article></div>';
 }
 
+var QR_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
+
+function loadQr() {
+  if (window.qrcode) return Promise.resolve();
+  return new Promise(function (resolve, reject) {
+    var s = document.createElement('script');
+    s.src = QR_LIB;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+function qrDataUrl(text) {
+  var q = window.qrcode(0, 'M');
+  q.addData(text);
+  q.make();
+  return q.createDataURL(4, 0);
+}
+
+/** يولّد رموز QR لكل عنصر له رابط مجلد؛ إن تعذر تحميل المكتبة تُطبع الصفحة بدونها. */
+function loadQrFor(elements, imgs) {
+  var withLink = elements.filter(function (el) { return el.link; });
+  if (!withLink.length) return Promise.resolve();
+  return loadQr().then(function () {
+    withLink.forEach(function (el) { imgs['qr:' + el.no] = qrDataUrl(el.link); });
+  }).catch(function () {});
+}
+
 function evidenceHTML(f, imgs) {
   return f.elements.map(function (el) {
     var cards = el.evidence.map(function (x) {
@@ -564,13 +615,15 @@ function evidenceHTML(f, imgs) {
         ? '<img class="ev-img" src="' + src + '" alt="' + esc(x.title) + '">'
         : '<div class="ev-file">مرفق: ' + esc(x.fileName) + ' (' + fmtSize(x.size) + ')</div>';
       return '<div class="ev-card"><div class="ev-meta"><strong>' + esc(x.title) + '</strong>' +
-        '<span class="muted">' + esc(x.fileName) + ' · ' + fmtDate(x.uploadedAt) + '</span></div>' + body + '</div>';
+        '<span class="muted">' + esc(x.fileName) + ' · ' + fmtDate(x.uploadedAt) + '</span></div>' +
+        (x.description ? '<p class="ev-desc">' + esc(x.description) + '</p>' : '') + body + '</div>';
     });
     var items = cards.length
       ? '<div class="ev-grid' + (cards.length > 1 ? ' multi' : '') + '">' + cards.join('') + '</div>'
       : '';
     return '<div class="doc-el"><div class="doc-el-head"><span class="doc-el-no">' + d(el.no) + '</span>' +
       '<h4>' + esc(el.name) + '</h4><span class="muted">الوزن ' + d(el.weight) + '٪</span></div>' +
+      (imgs['qr:' + el.no] ? '<div class="doc-qr"><img src="' + imgs['qr:' + el.no] + '" alt=""><span>امسح لعرض كل الشواهد</span></div>' : '') +
       (items || '<p class="doc-none">لا توجد شواهد لهذا العنصر.</p>') + '</div>';
   }).join('');
 }
@@ -718,6 +771,7 @@ document.addEventListener('click', function (e) {
   if (a === 'rate') return readRatingAndSave(Number(t.dataset.element), Number(t.dataset.value));
   if (a === 'view') return viewEvidence(t.dataset.id);
   if (a === 'del') return deleteEvidence(t.dataset.id);
+  if (a === 'edit-ev') return openEvidenceEdit(t.dataset.id);
   if (a === 'reset') return openResetModal(t.dataset.id, t.dataset.name);
   if (a === 'backup') return downloadBackup();
   if (a === 'assign') return openAssign(t.dataset.id);
@@ -746,6 +800,22 @@ document.addEventListener('submit', function (e) {
   var raw = function (k) { return String(fd.get(k) || ''); };
 
   if (action === 'upload') return upload(form);
+
+  if (action === 'link') {
+    return call('setElementLink', [S.token, Number(form.dataset.element), val('url')]).then(function () {
+      toast('تم حفظ رابط المجلد.');
+      closeModal();
+      return loadElements();
+    }).catch(handleErr);
+  }
+
+  if (action === 'edit-ev') {
+    return call('updateEvidence', [S.token, form.dataset.id, val('title'), raw('description').trim()]).then(function () {
+      toast('تم حفظ الشاهد.');
+      closeModal();
+      return loadElements();
+    }).catch(handleErr);
+  }
 
   if (action === 'setup') {
     if (raw('password') !== raw('confirm')) return toast('كلمتا المرور غير متطابقتين.', 'err');

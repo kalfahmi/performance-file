@@ -178,3 +178,9 @@ table.dt thead th { background: var(--navy); color: #fff; font-weight: 600; }
 .ev-grid:not(.multi) .ev-img { aspect-ratio: 16 / 9; }
 .ev-grid .ev-card { min-width: 0; }
 @media (max-width: 720px) { .ev-grid.multi { grid-template-columns: 1fr; } }
+
+/* ---------- رمز QR لمجلد الشواهد ونبذة الشاهد ---------- */
+.doc-qr { display: flex; align-items: center; gap: 12px; margin: 6px 0 10px; }
+.doc-qr img { width: 92px; height: 92px; padding: 4px; background: #fff; border: 1px solid #d9d9d9; }
+.doc-qr span { font-size: 12px; font-weight: 600; }
+.ev-desc { margin: 4px 0 6px; font-size: 12.5px; line-height: 1.7; }
