@@ -144,21 +144,25 @@ function downloadBlob(blob, name) {
 /* ---------- الدخول والإعداد ---------- */
 
 function boot() {
-  call('getState').then(function (st) {
-    if (st.setupNeeded) return renderSetup();
-    S.token = sessionStorage.getItem('ptoken');
-    if (!S.token) return renderLogin();
-    return call('whoami', [S.token]).then(function (me) {
-      S.me = me;
-      enter();
-    }, function () {
-      sessionStorage.removeItem('ptoken');
-      S.token = null;
-      renderLogin();
-    });
-  }).catch(function (err) {
-    document.getElementById('app').innerHTML = '<div class="error-box">' + esc(err.message) + '</div>';
+  S.token = sessionStorage.getItem('ptoken');
+  if (!S.token) return showLoginOrSetup();
+  document.getElementById('app').innerHTML = '<div class="notice">جارٍ التحميل…</div>';
+  return call('whoami', [S.token]).then(function (me) {
+    S.me = me;
+    enter();
+  }).catch(function () {
+    sessionStorage.removeItem('ptoken');
+    S.token = null;
+    return showLoginOrSetup();
   });
+}
+
+/** تظهر شاشة الدخول فورًا، ثم يُتحقق في الخلفية إن كان النظام يحتاج إعدادًا أولًا. */
+function showLoginOrSetup() {
+  renderLogin();
+  return call('getState').then(function (st) {
+    if (st.setupNeeded) renderSetup();
+  }).catch(function () {});
 }
 
 function renderSetup() {
@@ -922,12 +926,19 @@ document.addEventListener('submit', function (e) {
   }
 
   if (action === 'login') {
+    var loginBtn = form.querySelector('button[type="submit"]');
+    loginBtn.disabled = true;
+    loginBtn.textContent = 'جارٍ الدخول…';
     return call('login', [val('username'), raw('password')]).then(function (r) {
       S.token = r.token;
       S.me = r.user;
       sessionStorage.setItem('ptoken', r.token);
       enter();
-    }).catch(handleErr);
+    }).catch(function (err) {
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'دخول';
+      handleErr(err);
+    });
   }
 
   if (action === 'account') {
