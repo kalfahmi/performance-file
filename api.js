@@ -288,15 +288,21 @@ API.getProfile = function (_t, targetId) {
 
 /** يحفظ الحقول المرسلة فقط. targetId لمسؤول النظام حين يعدّل ملف غيره (وإلا فملف المستخدم نفسه). */
 API.saveProfile = function (_t, data, targetId) {
+  var target;
   return sbMe().then(function (id) {
+    target = targetId || id;
     var row = {};
     Object.keys(PROFILE_MAP).forEach(function (k) {
       if (k in data) row[PROFILE_MAP[k]] = String(data[k] == null ? '' : data[k]).slice(0, k === 'message' ? 2000 : 150);
     });
-    return sb.from('profiles').update(row).eq('user_id', targetId || id).select('user_id');
+    return sb.from('profiles').update(row).eq('user_id', target).select('user_id');
   }).then(function (r) {
     if (!sbData(r, 'تعذّر حفظ بيانات الملف.').length) throw new Error('لا تملك صلاحية تعديل هذا الملف.');
-    return true;
+    // اسم صاحب الملف هو اسم الحساب أيضًا (في القوائم والشريط العلوي). جدول الحسابات يعدّله مسؤول النظام فقط،
+    // ولغيره يمر التحديث بلا أثر.
+    var name = String(data.ownerName || '').trim().slice(0, 150);
+    if (!name) return true;
+    return sb.from('users').update({ name: name }).eq('id', target).then(function () { return true; }, function () { return true; });
   });
 };
 

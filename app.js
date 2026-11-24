@@ -386,13 +386,13 @@ function evidenceCardHTML(x, mine) {
   var isImg = /^image\//.test(x.mime);
   var kind = x.mime === 'application/pdf' ? 'PDF' : (ext(x.fileName) || 'ملف').toUpperCase();
   var thumb = isImg
-    ? '<button class="ev-thumb" type="button" data-act="view" data-id="' + esc(x.id) + '" aria-label="عرض الصورة"><img alt="" data-ev-thumb="' + esc(x.id) + '"></button>'
-    : '<button class="ev-thumb ev-file" type="button" data-act="view" data-id="' + esc(x.id) + '"><span>' + esc(kind) + '</span></button>';
-  return '<article class="ev-card">' +
-    '<div class="ev-card-head"><strong>' + esc(x.title) + '</strong><span class="muted">' + esc(hijriDate(x.uploadedAt)) + '</span></div>' +
-    (x.description ? '<p class="ev-desc">' + esc(x.description) + '</p>' : '') +
-    '<div class="ev-card-body">' + thumb + '<span class="muted ev-meta">' + esc(x.fileName) + '<br>' + fmtSize(x.size) + '</span></div>' +
-    '<div class="ev-actions"><button class="btn small" type="button" data-act="view" data-id="' + esc(x.id) + '">عرض</button>' +
+    ? '<button class="ep-thumb" type="button" data-act="view" data-id="' + esc(x.id) + '" aria-label="عرض الصورة"><img alt="" data-ev-thumb="' + esc(x.id) + '"></button>'
+    : '<button class="ep-thumb ep-file" type="button" data-act="view" data-id="' + esc(x.id) + '"><span>' + esc(kind) + '</span></button>';
+  return '<article class="ep-card">' +
+    '<div class="ep-head"><strong>' + esc(x.title) + '</strong><span class="muted">' + esc(hijriDate(x.uploadedAt)) + '</span></div>' +
+    (x.description ? '<p class="ep-desc">' + esc(x.description) + '</p>' : '') +
+    '<div class="ep-body">' + thumb + '<span class="muted ep-meta">' + esc(x.fileName) + '<br>' + fmtSize(x.size) + '</span></div>' +
+    '<div class="ep-actions"><button class="btn small" type="button" data-act="view" data-id="' + esc(x.id) + '">عرض</button>' +
     (mine ? '<button class="btn small" type="button" data-act="edit-ev" data-id="' + esc(x.id) + '">تعديل</button>' +
       '<button class="btn small danger" type="button" data-act="del" data-id="' + esc(x.id) + '">حذف</button>' : '') +
     '</div></article>';
@@ -402,8 +402,8 @@ function openElement(no) {
   var f = S.file, el = f.elements[no - 1], mine = f.editable;
   if (!el) return;
   var cards = el.evidence.length
-    ? '<div class="ev-cards">' + el.evidence.map(function (x) { return evidenceCardHTML(x, mine); }).join('') + '</div>'
-    : '<p class="muted ev-empty">لا توجد شواهد لهذا العنصر بعد.</p>';
+    ? '<div class="ep-cards">' + el.evidence.map(function (x) { return evidenceCardHTML(x, mine); }).join('') + '</div>'
+    : '<p class="muted ep-empty">لا توجد شواهد لهذا العنصر بعد.</p>';
   var addForm = mine
     ? '<form class="ev-add" data-action="upload" data-element="' + no + '">' +
       '<label>عنوان الشاهد<input name="title" maxlength="120" required placeholder="اكتب العنوان أو اختر من الشواهد المقترحة"></label>' +
@@ -923,29 +923,7 @@ function docHTML(f, p, imgs) {
       '</td><td>' + statusOf(s.counts[i])[1] + '</td><td>' + RATING_LABEL[el.rating] + '</td></tr>';
   }).join('');
   var isPrincipal = p.owner && p.owner.role === 'principal';
-  var info = [
-    ['صفة صاحب الملف', pr.ownerType],
-    ['المادة أو التخصص', pr.subject],
-    ['المرحلة', pr.stage],
-    ['المدرسة', pr.school],
-    ['إدارة التعليم', pr.eduOffice],
-    isPrincipal ? [pr.reviewerTitle || 'المسؤول المباشر', pr.principalName] : ['مدير المدرسة', pr.principalName],
-    ['الرقم الوظيفي / الهوية الوطنية', pr.jobNo]
-  ];
-  var rowsCover = info.map(function (r) {
-    return '<div class="cv-row"><span class="cv-k">' + esc(r[0]) + '</span><span class="cv-v">' + (r[1] ? esc(r[1]) : '—') + '</span></div>';
-  }).join('');
-  var period = [pr.term, pr.year ? d(pr.year) + 'هـ' : ''].filter(Boolean).join(' · ');
-  var cover = '<section class="a4 a4-cover"><div class="cv-frame"><div class="cv-inner">' +
-    '<span class="cv-corner tl"></span><span class="cv-corner tr"></span><span class="cv-corner bl"></span><span class="cv-corner br"></span>' +
-    '<div class="cv-top"><span class="cv-kicker">المملكة العربية السعودية · وزارة التعليم</span><span class="cv-office">' + esc(pr.eduOffice || EDU) + '</span></div>' +
-    '<div class="cv-titles"><span class="cv-emblem" aria-hidden="true"><span></span></span><h1>ملف الأداء الوظيفي</h1>' +
-    (period ? '<p class="cv-period">' + esc(period) + '</p>' : '') +
-    '<div class="cv-orn" aria-hidden="true"><i></i><b></b><i></i></div>' +
-    '<p class="cv-name">' + esc(pr.ownerName || f.owner.name) + '</p></div>' +
-    '<div class="cv-table">' + rowsCover + '</div>' +
-    '<div class="cv-bottom"><strong>' + esc(pr.school || SCHOOL) + '</strong></div>' +
-    '</div></div></section>';
+  var cover = coverHTML(f, pr, isPrincipal);
   // المستند أوراق A4 ثابتة: الغلاف، ثم ورقة الملخص وجدول العناصر، ثم أوراق العناصر (تُبنى بالقياس في paginateDoc)، ثم الورقة الختامية.
   return '<div class="doc-wrap"><div class="doc" id="print-area">' + cover +
     '<section class="a4 a4-first">' +
@@ -970,6 +948,99 @@ function docHTML(f, p, imgs) {
     '<footer class="doc-foot" style="background-image:url(assets/footer.png)"></footer></div>' +
     '</section>' +
     '</div></div>';
+}
+
+/* ---------- غلاف السجل ---------- */
+
+var COUNT_WORDS = { 11: 'أحد عشر عنصرًا', 13: 'ثلاثة عشر عنصرًا', 19: 'تسعة عشر عنصرًا' };
+
+/** نقطة على دائرة: الزاوية بالدرجات من اليمين عكس عقارب الساعة. */
+function cvPt(cx, cy, r, deg) {
+  var t = deg * Math.PI / 180;
+  return [cx + r * Math.cos(t), cy - r * Math.sin(t)];
+}
+
+function cvArc(cx, cy, r1, r2, a0, a1) {
+  var p = function (r, a) { var q = cvPt(cx, cy, r, a); return q[0].toFixed(1) + ' ' + q[1].toFixed(1); };
+  return 'M' + p(r2, a0) + ' A' + r2 + ' ' + r2 + ' 0 0 1 ' + p(r2, a1) + ' L' + p(r1, a1) + ' A' + r1 + ' ' + r1 + ' 0 0 0 ' + p(r1, a0) + 'Z';
+}
+
+/** عدّاد الأداء: قطعة لكل عنصر، وآخر قطعتين ذهبيتان، والمؤشر نحو ما قبل الأخيرة. */
+function gaugeSVG(n) {
+  var W = 760, H = 400, cx = 380, cy = 330, R = 232, r = 160, step = 180 / n, gap = Math.min(1.4, step * 0.12);
+  var light = ['#3F9488', '#79C8BA'];
+  var mix = function (i) {
+    var k = n > 3 ? i / (n - 3) : 0;
+    var c = function (j) { return Math.round(parseInt(light[0].substr(j, 2), 16) * (1 - k) + parseInt(light[1].substr(j, 2), 16) * k); };
+    return 'rgb(' + c(1) + ',' + c(3) + ',' + c(5) + ')';
+  };
+  var segs = '', nums = '', ticks = '';
+  for (var i = 0; i < n; i++) {
+    var a0 = 180 - i * step - gap / 2, a1 = 180 - (i + 1) * step + gap / 2, mid = 180 - (i + 0.5) * step;
+    var gold = i >= n - 2;
+    segs += '<path d="' + cvArc(cx, cy, r, R, a0, a1) + '" fill="' + (gold ? '#E2A532' : mix(i)) + '"/>';
+    var tp = cvPt(cx, cy, (R + r) / 2, mid);
+    nums += '<text x="' + tp[0].toFixed(1) + '" y="' + tp[1].toFixed(1) + '" fill="' + (gold ? '#1E3C45' : '#fff') + '">' + d(i + 1) + '</text>';
+    var t1 = cvPt(cx, cy, r - 10, mid), t2 = cvPt(cx, cy, r - 22, mid);
+    ticks += '<line x1="' + t1[0].toFixed(1) + '" y1="' + t1[1].toFixed(1) + '" x2="' + t2[0].toFixed(1) + '" y2="' + t2[1].toFixed(1) + '" stroke="' + (i % 3 === 1 || gold ? '#E2A532' : 'rgba(255,255,255,.35)') + '" stroke-width="3" stroke-linecap="round"/>';
+  }
+  var minor = '';
+  for (var m = 0; m <= 60; m++) {
+    var q1 = cvPt(cx, cy, r - 30, m * 3), q2 = cvPt(cx, cy, r - 36, m * 3);
+    minor += '<line x1="' + q1[0].toFixed(1) + '" y1="' + q1[1].toFixed(1) + '" x2="' + q2[0].toFixed(1) + '" y2="' + q2[1].toFixed(1) + '" stroke="rgba(255,255,255,.22)" stroke-width="1.5"/>';
+  }
+  var na = 180 - (n - 1.5) * step, tip = cvPt(cx, cy, r - 8, na), b1 = cvPt(cx, cy, 16, na + 90), b2 = cvPt(cx, cy, 16, na - 90);
+  var star = function (x, y, s) {
+    return '<path d="M' + x + ' ' + (y - s) + ' Q' + x + ' ' + y + ' ' + (x + s) + ' ' + y + ' Q' + x + ' ' + y + ' ' + x + ' ' + (y + s) + ' Q' + x + ' ' + y + ' ' + (x - s) + ' ' + y + ' Q' + x + ' ' + y + ' ' + x + ' ' + (y - s) + 'Z" fill="#E2A532"/>';
+  };
+  return '<svg class="cv-gauge" viewBox="0 0 ' + W + ' ' + H + '" aria-hidden="true">' +
+    '<defs><pattern id="cvgrid" width="34" height="34" patternUnits="userSpaceOnUse"><path d="M34 0H0V34" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="1"/></pattern></defs>' +
+    '<rect width="' + W + '" height="' + H + '" fill="url(#cvgrid)"/>' +
+    '<polyline points="20,330 150,300 260,250 420,240 520,190 620,120 740,60" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="4"/>' +
+    '<path d="' + (function () { var p0 = cvPt(cx, cy, R + 22, 180), p1 = cvPt(cx, cy, R + 22, 0); return 'M' + p0[0] + ' ' + p0[1] + ' A' + (R + 22) + ' ' + (R + 22) + ' 0 0 1 ' + p1[0] + ' ' + p1[1]; })() + '" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="2" stroke-dasharray="2 7"/>' +
+    '<line x1="' + (cx - R - 70) + '" y1="' + cy + '" x2="' + (cx + R + 70) + '" y2="' + cy + '" stroke="rgba(255,255,255,.25)" stroke-width="2"/>' +
+    segs + minor + ticks +
+    '<g class="cv-nums" font-size="' + (n > 13 ? 17 : 22) + '">' + nums + '</g>' +
+    '<polygon points="' + b1[0].toFixed(1) + ',' + b1[1].toFixed(1) + ' ' + tip[0].toFixed(1) + ',' + tip[1].toFixed(1) + ' ' + b2[0].toFixed(1) + ',' + b2[1].toFixed(1) + '" fill="#E2A532"/>' +
+    '<circle cx="' + cx + '" cy="' + cy + '" r="64" fill="#fff"/>' +
+    '<circle cx="' + cx + '" cy="' + cy + '" r="54" fill="none" stroke="#2E7D74" stroke-width="2" stroke-dasharray="4 5"/>' +
+    '<circle cx="' + cx + '" cy="' + (cy - 14) + '" r="15" fill="#1E3C45"/>' +
+    '<path d="M' + (cx - 28) + ' ' + (cy + 26) + ' Q' + (cx - 28) + ' ' + (cy + 2) + ' ' + cx + ' ' + (cy + 4) + ' Q' + (cx + 28) + ' ' + (cy + 2) + ' ' + (cx + 28) + ' ' + (cy + 26) + 'Z" fill="#1E3C45"/>' +
+    '<circle cx="' + (cx + 46) + '" cy="' + (cy + 46) + '" r="15" fill="#E2A532" stroke="#fff" stroke-width="3"/>' +
+    '<path d="' + (function () { var pts = []; for (var k = 0; k < 10; k++) { var rr = k % 2 ? 4 : 9, an = -90 + k * 36; pts.push((cx + 46 + rr * Math.cos(an * Math.PI / 180)).toFixed(1) + ' ' + (cy + 46 + rr * Math.sin(an * Math.PI / 180)).toFixed(1)); } return 'M' + pts.join(' L') + 'Z'; })() + '" fill="#fff"/>' +
+    star(655, 80, 13) + star(700, 125, 8) + star(610, 130, 6) +
+    '</svg>';
+}
+
+/** الورقة الأولى: غلاف السجل. */
+function coverHTML(f, pr, isPrincipal) {
+  var n = f.elements.length;
+  var year = pr.year ? d(pr.year) + 'هـ' : '';
+  var period = [pr.term, year].filter(Boolean).join(' – ');
+  var school = pr.school || SCHOOL;
+  var schoolLine = /^(مدرسة|ابتدائية|متوسطة|ثانوية|روضة|مجمع)/.test(school) ? school : 'مدرسة ' + school;
+  var box = function (k, v) { return '<div class="cv-box"><span>' + esc(k) + '</span><strong>' + (v ? esc(v) : '') + '</strong></div>'; };
+  var blank = function (k) { return '<div class="cv-box"><span>' + esc(k) + '</span><i class="cv-blank"></i></div>'; };
+  return '<section class="a4 a4-cover">' +
+    '<header class="cv-head"><div class="cv-h-right">المملكة العربية السعودية<br>وزارة التعليم</div>' +
+    '<img class="cv-logo" src="assets/moe-logo.png" alt="وزارة التعليم">' +
+    '<div class="cv-h-left">' + esc(pr.eduOffice || EDU) + '<br>' + esc(schoolLine) + '</div></header>' +
+    '<div class="cv-rule"><i></i></div>' +
+    '<div class="cv-hero"><span class="cv-tag">الأداء الوظيفي</span>' + gaugeSVG(n) +
+    '<span class="cv-caption">' + esc((COUNT_WORDS[n] || d(n) + ' عنصرًا') + '... وأداءٌ يرتقي عامًا بعد عام') + '</span></div>' +
+    '<div class="cv-titles"><span class="cv-pre">سجل</span><h1>الأداء الوظيفي</h1>' +
+    (period ? '<span class="cv-period">' + esc(period) + '</span>' : '') +
+    '<span class="cv-pre">صاحب السجل</span><strong class="cv-owner">' + esc(pr.ownerName || f.owner.name) + '</strong></div>' +
+    '<div class="cv-grid">' +
+    box('الصفة', pr.ownerType) + box('المادة / التخصص', pr.subject) +
+    box('المرحلة', pr.stage) + box('المدرسة', pr.school) +
+    box('إدارة التعليم', pr.eduOffice) +
+    (isPrincipal ? box(pr.reviewerTitle || 'المسؤول المباشر', pr.principalName) : box('مدير المدرسة', pr.principalName)) +
+    (pr.jobNo ? box('الرقم الوظيفي / الهوية الوطنية', pr.jobNo) : blank('الرقم الوظيفي / الهوية الوطنية')) +
+    blank('التقدير العام') +
+    '</div>' +
+    '<footer class="cv-foot"><div class="cv-stripe"><i></i></div><div class="cv-band"><span>نتعلّم معًا... <b>لينجح كل طالب</b></span><span>سجل الأداء الوظيفي' + (year ? ' – ' + esc(year) : '') + '</span></div></footer>' +
+    '</section>';
 }
 
 /** أقل ارتفاع لصفحة PDF مصغَّرة (١٠٥ ملم ≈ نصف صفحة) حتى تبقى مقروءة. */
