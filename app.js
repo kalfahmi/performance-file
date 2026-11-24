@@ -703,11 +703,13 @@ function docHTML(f, p, imgs) {
     '</td><th>التقدير الذاتي الاسترشادي</th><td>' + pct(s.selfScore) + '</td></tr></table></section>' +
     '<section class="doc-sec"><h3>عناصر الأداء</h3><table class="dt"><thead><tr><th>#</th><th>العنصر</th><th>الوزن</th><th>الشواهد</th><th>الحالة</th><th>التقدير الذاتي</th></tr></thead><tbody>' + rows + '</tbody></table></section>' +
     '<section class="doc-sec doc-ev-sec"><h3>الشواهد</h3>' + evidenceHTML(f, imgs) + '</section>' +
+    // الصفحة الختامية: رسالة المعلم في أعلاها، والتوقيعات والتذييل في أسفلها.
+    '<div class="doc-closing">' +
     (pr.message ? '<section class="doc-sec"><h3>رسالة المعلم</h3><p class="doc-msg">' + esc(pr.message) + '</p></section>' : '') +
     '<section class="doc-sign"><div><span class="muted">توقيع صاحب الملف</span>' + (imgs.ownerSig ? '<img src="' + imgs.ownerSig + '" alt="">' : '<div class="sig-empty"></div>') + '<strong>' + esc(pr.ownerName) + '</strong></div>' +
     '<div><span class="muted">توقيع مدير المدرسة والختم</span><div class="doc-sig-row">' + (imgs.principalSig ? '<img src="' + imgs.principalSig + '" alt="">' : '<div class="sig-empty"></div>') + (imgs.stamp ? '<img class="doc-stamp" src="' + imgs.stamp + '" alt="">' : '') + '</div><strong>' + esc(pr.principalName) + '</strong></div></section>' +
     '<footer class="doc-foot" style="background-image:url(assets/footer.png)"></footer>' +
-    '</article></div>';
+    '</div></article></div>';
 }
 
 var QR_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
