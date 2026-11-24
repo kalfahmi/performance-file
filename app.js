@@ -716,6 +716,9 @@ function docHTML(f, p, imgs) {
     '</div></div>';
 }
 
+/** أقل ارتفاع لصفحة PDF مصغَّرة (١٠٥ ملم ≈ نصف صفحة) حتى تبقى مقروءة. */
+var MIN_PDF_PX = 105 * 96 / 25.4;
+
 /** يوزّع شواهد كل عنصر على أوراق A4: كل عنصر يبدأ في ورقة جديدة، وإن لم تتسع الورقة لصف شواهد انتقل إلى ورقة تالية. */
 function paginateDoc(root) {
   if (!root) return Promise.resolve();
@@ -771,6 +774,16 @@ function paginateDoc(root) {
       Array.prototype.slice.call(src.children).forEach(function (row) {
         grid.appendChild(row);
         if (fits() || grid.children.length === 1) return;
+        // صفحة PDF لا تتسع: تُصغَّر لتملأ المتبقي من الورقة ما دام لا يقل عن نصف صفحة تقريبًا.
+        var page = row.querySelector('.ev-img.page');
+        if (page) {
+          var room = page.getBoundingClientRect().height - (sheet.scrollHeight - sheet.clientHeight) - 2;
+          if (room >= MIN_PDF_PX) {
+            page.style.maxHeight = Math.floor(room) + 'px';
+            if (fits()) return;
+            page.style.maxHeight = '';
+          }
+        }
         grid.removeChild(row);
         newSheet();
         var cont = head.cloneNode(true);
@@ -838,6 +851,8 @@ function evidenceHTML(f, imgs) {
         : '<div class="ev-file">مرفق: ' + esc(x.fileName) + ' (' + fmtSize(x.size) + ')</div>';
       cards.push({ pdf: false, html: '<div class="ev-card">' + head('') + desc + body + '</div>' });
     });
+    // الصور والملفات الأخرى أولًا ثم صفحات PDF، حتى تجتمع الصور في الورقة الأولى للعنصر.
+    cards = cards.filter(function (c) { return !c.pdf; }).concat(cards.filter(function (c) { return c.pdf; }));
     // صفوف الشواهد: كل صفحة PDF في صف، والصور والملفات الأخرى اثنتين في كل صف.
     var rows = [], pair = [];
     var flush = function () {
