@@ -101,3 +101,62 @@ td { padding: 12px 14px; border-bottom: 1px solid #EEF2F5; vertical-align: middl
   .print-table th, .print-table td { padding: 6px 8px; font-size: 10.5pt; }
   .pill, .no, .meter span { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* ---------- بيانات الملف ---------- */
+.pform { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.pform label { min-width: 0; }
+.pform .wide { grid-column: 1 / -1; }
+textarea { font: inherit; color: var(--ink); padding: 10px 12px; border: 1px solid #C5D2DA; background: #fff; border-radius: 10px; resize: vertical; }
+select:disabled, input:disabled, textarea:disabled { background: var(--soft); color: var(--ink); }
+.form-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; grid-column: 1 / -1; }
+.img-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.img-card { background: var(--soft); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.img-name { font-weight: 700; color: var(--ink); }
+.img-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.sigpad { width: 100%; height: auto; aspect-ratio: 600 / 240; border: 1px dashed #C5D2DA; border-radius: 12px; background: #fff; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 16px; color: var(--ink); }
+.check input { width: 18px; height: 18px; }
+.table-wrap table th, .table-wrap table td { text-align: right; }
+
+/* ---------- معاينة الطباعة (الهوية البصرية للمدرسة) ---------- */
+.doc-wrap { display: flex; justify-content: center; overflow-x: auto; padding: 8px 0 24px; }
+.doc { width: 210mm; max-width: 100%; min-height: 297mm; background: #fff; box-shadow: 0 2px 18px rgba(23,43,57,.12); display: flex; flex-direction: column; color: #192C3A; }
+.doc-head { position: relative; width: 100%; aspect-ratio: 1696 / 418; background-size: 100% 100%; background-repeat: no-repeat; }
+.doc-head-text { position: absolute; top: 30%; inset-inline-start: 6%; color: #fff; display: flex; flex-direction: column; gap: 4px; font-size: clamp(11px, 2.4vw, 15px); }
+.doc-head-text strong { font-size: clamp(13px, 2.8vw, 18px); }
+.doc-title { display: grid; grid-template-columns: 90px 1fr 90px; align-items: center; gap: 12px; padding: 16px 28px 6px; text-align: center; }
+.doc-title h1 { font-size: 24px; color: var(--navy); }
+.doc-title p { margin: 0; color: var(--muted); font-size: 14px; }
+.doc-logo { height: 70px; display: grid; place-items: center; }
+.doc-logo img { max-width: 100%; max-height: 70px; object-fit: contain; }
+.doc-sec { padding: 10px 28px 4px; display: flex; flex-direction: column; gap: 8px; }
+.doc-sec h3 { font-size: 16px; color: var(--copper-dark); border-bottom: 2px solid var(--copper); padding-bottom: 4px; }
+table.kv, table.dt { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.kv th, table.kv td, table.dt th, table.dt td { border: 1px solid #D5DEE4; padding: 6px 8px; text-align: right; vertical-align: middle; }
+table.kv th { background: var(--soft); color: var(--muted); font-weight: 600; width: 22%; }
+table.dt thead th { background: var(--navy); color: #fff; font-weight: 600; }
+.doc-msg { margin: 0; border: 1px solid #D5DEE4; border-radius: 8px; padding: 10px 12px; background: var(--soft); white-space: pre-wrap; font-size: 14px; }
+.doc-sign { margin: 18px 28px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; text-align: center; }
+.doc-sign > div { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.doc-sign img, .sig-empty { height: 70px; width: 70%; object-fit: contain; }
+.sig-empty { border-bottom: 1px dashed #C5D2DA; }
+.doc-foot { margin-top: auto; width: 100%; aspect-ratio: 1696 / 208; background-size: 100% 100%; background-repeat: no-repeat; }
+
+@media (max-width: 720px) {
+  .pform, .img-grid { grid-template-columns: 1fr; }
+  .doc-title { grid-template-columns: 56px 1fr 56px; padding: 12px 14px 4px; }
+  .doc-title h1 { font-size: 18px; }
+  .doc-sec { padding: 8px 14px 2px; }
+  table.kv th { width: 30%; }
+}
+
+@media print {
+  @page { size: A4; margin: 0; }
+  body { background: #fff; }
+  .no-print { display: none !important; }
+  body * { visibility: hidden; }
+  #print-area, #print-area * { visibility: visible; }
+  #print-area { position: absolute; inset: 0; width: 100%; min-height: 0; box-shadow: none; }
+  .doc-wrap { padding: 0; overflow: visible; }
+  table.dt thead th, .doc-head, .doc-foot { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
