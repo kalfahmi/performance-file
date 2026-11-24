@@ -225,6 +225,31 @@ await expect('المدير ما زال لا يرسل باسم غيره', 'P', `i
 await expect('المدير ما زال لا يضع درجة باسم غيره', 'P', `insert into grades (teacher_id, grade, principal_id) values ('${U.T1}', 2, '${U.A}')`, denied);
 await expect('المعلم ما زال لا يرسل ملف غيره', 'T1', `insert into submissions (user_id) values ('${U.T3}')`, denied);
 
+// الملفات السابقة (migration 0011)
+await expect('تقدير قبل الأرشفة', 'T1', `insert into ratings (user_id, element, rating) values ('${U.T1}',2,4) on conflict (user_id, element) do update set rating=4`, r => !r.error);
+await expect('رابط قبل الأرشفة', 'T1', `insert into links (user_id, element, url) values ('${U.T1}',2,'https://drive.google.com/x') on conflict (user_id, element) do nothing`, r => !r.error);
+await expect('المعلم لا يؤرشف ملفه', 'T1', `select archive_file('${U.T1}', 'وكيل مدرسة')`, denied);
+await expect('المدير لا يؤرشف ملف معلمه', 'P', `select archive_file('${U.T1}', 'وكيل مدرسة')`, denied);
+await expect('مسؤول النظام يؤرشف ويغيّر الصفة', 'A', `select archive_file('${U.T1}', 'وكيل مدرسة') id`, r => !r.error && !!r.rows[0].id);
+await expect('صاحب الملف يرى أرشيفه', 'T1', `select count(*) n from archives where owner_type='معلم' and jsonb_array_length(ratings)>=1 and jsonb_array_length(links)>=1`, count(1));
+await expect('الملف الحالي بلا شواهد', 'T1', `select count(*) n from evidence where archive_id is null`, count(0));
+await expect('الشواهد المؤرشفة محفوظة', 'T1', `select count(*) n from evidence where archive_id is not null`, r => !r.error && Number(r.rows[0].n) >= 1);
+await expect('الملخص لا يعدّ المؤرشف', 'T1', `select coalesce(sum(evidence_count),0) n from file_summaries()`, count(0));
+await expect('الملخص بعناصر الصفة الجديدة', 'T1', `select count(*) n from file_summaries()`, count(19));
+await expect('التقديرات والروابط تبدأ فارغة', 'T1', `select (select count(*) from ratings) + (select count(*) from links) n`, count(0));
+await expect('الشاهد المؤرشف لا يُحذف', 'T1', `delete from evidence where archive_id is not null`, none);
+await expect('الشاهد المؤرشف لا يُعدَّل', 'T1', `update evidence set title='x' where archive_id is not null`, none);
+await expect('لا يُعاد شاهد إلى الملف الحالي', 'T1', `update evidence set archive_id=null where archive_id is not null`, none);
+await expect('لا يُضاف شاهد إلى الأرشيف', 'T1', `insert into evidence (user_id, element, title, file_path, file_name, mime, size, archive_id) select '${U.T1}',1,'x','${U.T1}/z','x','a',1,id from archives limit 1`, denied);
+await expect('المعلم لا ينشئ أرشيفًا', 'T1', `insert into archives (user_id) values ('${U.T1}')`, denied);
+await expect('المعلم لا يحذف أرشيفه', 'T1', `delete from archives`, none);
+await expect('معلم آخر لا يرى الأرشيف', 'T2', `select count(*) n from archives`, count(0));
+await expect('المدير المسند يرى أرشيف معلمه', 'P', `select count(*) n from archives where user_id='${U.T1}'`, count(1));
+await expect('الشاهد الجديد في الملف الحالي', 'T1', `insert into evidence (user_id, element, title, file_path, file_name, mime, size) values ('${U.T1}',19,'جديد','${U.T1}/n','n','a',1)`, r => !r.error);
+await expect('مسؤول النظام يحذف الأرشيف', 'A', `delete from archives where user_id='${U.T1}'`, r => r.affected === 1);
+await expect('حذف الأرشيف يحذف شواهده فقط', 'A', `select count(*) n from evidence where user_id='${U.T1}'`, count(1));
+await expect('العودة إلى معلم', 'A', `update profiles set owner_type='معلم' where user_id='${U.T1}'`, r => r.affected === 1);
+
 // دوال الخادم (service_role)
 await expect('دوال الخادم تعدّ الحسابات', 'service', 'select count(*) n from users', count(6));
 await expect('اسم مستخدم مكرر مرفوض', 'service', `insert into users (id, username, name, role) values ('${U.T3}','dup','x','teacher')`, denied);

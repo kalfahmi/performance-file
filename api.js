@@ -167,7 +167,7 @@ API.getFile = function (_t, targetId) {
     me = id;
     return Promise.all([
       sbUserRow(targetId),
-      sb.from('evidence').select('id, element, title, description, file_name, mime, size, uploaded_at').eq('user_id', targetId).order('uploaded_at'),
+      sb.from('evidence').select('id, element, title, description, file_name, mime, size, uploaded_at').eq('user_id', targetId).is('archive_id', null).order('uploaded_at'),
       sb.from('ratings').select('element, rating').eq('user_id', targetId),
       sb.from('links').select('element, url').eq('user_id', targetId),
       sb.from('profiles').select('owner_type').eq('user_id', targetId).maybeSingle()
@@ -176,24 +176,7 @@ API.getFile = function (_t, targetId) {
     var owner = r[0], evs = sbData(r[1]), rts = sbData(r[2]), lks = sbData(r[3]);
     // بلا صفة محفوظة: حساب المدير «مدير مدرسة»، وغيره «معلم».
     var ownerType = (sbData(r[4]) || {}).owner_type || (owner.role === 'principal' ? 'مدير مدرسة' : 'معلم');
-    var elements = elementsFor(ownerType).map(function (el) {
-      var rating = rts.filter(function (x) { return x.element === el.no; })[0];
-      var link = lks.filter(function (x) { return x.element === el.no; })[0];
-      return {
-        no: el.no, name: el.name, weight: el.weight,
-        rating: rating ? rating.rating : 0,
-        link: link ? link.url : '',
-        evidence: evs.filter(function (x) { return x.element === el.no; }).map(function (x) {
-          return { id: x.id, title: x.title, description: x.description, fileName: x.file_name, mime: x.mime, size: x.size, uploadedAt: x.uploaded_at };
-        })
-      };
-    });
-    var summary = sbSummary(
-      elements.map(function (el) { return el.evidence.length; }),
-      elements.map(function (el) { return el.rating; }),
-      elements
-    );
-    return { owner: { id: owner.id, name: owner.name, username: owner.username }, ownerType: ownerType, editable: targetId === me, elements: elements, summary: summary };
+    return sbBuildFile(owner, ownerType, evs, rts, lks, targetId === me);
   });
 };
 
@@ -543,11 +526,96 @@ API.changeMyPassword = function (_t, oldPassword, newPassword) {
 
 /** نسخة احتياطية بما يسمح به الدور: كل شيء لمسؤول النظام، وملف المستخدم وحده لغيره. */
 API.exportBackup = function () {
-  var tables = ['users', 'profiles', 'evidence', 'ratings', 'links', 'access', 'submissions', 'messages', 'grades'];
+  var tables = ['users', 'profiles', 'archives', 'evidence', 'ratings', 'links', 'access', 'submissions', 'messages', 'grades'];
   return Promise.all(tables.map(function (t) { return sb.from(t).select('*'); })).then(function (r) {
     var out = { exportedAt: new Date().toISOString(), source: 'supabase', elementSets: ELEMENT_SETS };
     tables.forEach(function (t, i) { out[t] = sbData(r[i], 'تعذّر تجهيز النسخة الاحتياطية.'); });
     return out;
+  });
+};
+
+/* ---------- الملفات السابقة (الأرشيف) ---------- */
+
+/** يبني ملفًا بصيغة getFile من صفوفه، للملف الحالي وللمؤرشف. */
+function sbBuildFile(owner, ownerType, evs, rts, lks, editable) {
+  var elements = elementsFor(ownerType).map(function (el) {
+    var rating = rts.filter(function (x) { return x.element === el.no; })[0];
+    var link = lks.filter(function (x) { return x.element === el.no; })[0];
+    return {
+      no: el.no, name: el.name, weight: el.weight,
+      rating: rating ? rating.rating : 0,
+      link: link ? link.url : '',
+      evidence: evs.filter(function (x) { return x.element === el.no; }).map(function (x) {
+        return { id: x.id, title: x.title, description: x.description, fileName: x.file_name, mime: x.mime, size: x.size, uploadedAt: x.uploaded_at };
+      })
+    };
+  });
+  var summary = sbSummary(
+    elements.map(function (el) { return el.evidence.length; }),
+    elements.map(function (el) { return el.rating; }),
+    elements
+  );
+  return { owner: { id: owner.id, name: owner.name, username: owner.username }, ownerType: ownerType, editable: editable, elements: elements, summary: summary };
+}
+
+/** الملفات السابقة لصاحب الملف، الأحدث أولًا، مع عدد شواهد كل منها. */
+API.listArchives = function (_t, targetId) {
+  return Promise.all([
+    sb.from('archives').select('id, owner_type, profile, created_at').eq('user_id', targetId).order('created_at', { ascending: false }),
+    sb.from('evidence').select('archive_id').eq('user_id', targetId).not('archive_id', 'is', null)
+  ]).then(function (r) {
+    var rows = sbData(r[0], 'تعذّر تحميل الملفات السابقة.') || [];
+    var counts = {};
+    (sbData(r[1]) || []).forEach(function (x) { counts[x.archive_id] = (counts[x.archive_id] || 0) + 1; });
+    return rows.map(function (a) {
+      var p = a.profile || {};
+      return { id: a.id, ownerType: a.owner_type, year: p.year || '', term: p.term || '', createdAt: a.created_at, evidenceCount: counts[a.id] || 0 };
+    });
+  });
+};
+
+/** الملف المؤرشف بصيغة getFile وgetProfile معًا، للمعاينة والطباعة. */
+API.getArchiveFile = function (_t, archiveId) {
+  var a;
+  return sb.from('archives').select('*').eq('id', archiveId).maybeSingle().then(function (r) {
+    a = sbData(r, 'تعذّر تحميل الملف السابق.');
+    if (!a) throw new Error('الملف السابق غير موجود أو لا تملك صلاحية عرضه.');
+    return Promise.all([
+      sbUserRow(a.user_id),
+      sb.from('evidence').select('id, element, title, description, file_name, mime, size, uploaded_at').eq('archive_id', archiveId).order('uploaded_at')
+    ]);
+  }).then(function (r) {
+    var owner = r[0], p = a.profile || {};
+    var profile = {};
+    Object.keys(PROFILE_MAP).forEach(function (k) { profile[k] = p[PROFILE_MAP[k]] || ''; });
+    profile.ownerType = a.owner_type;
+    return {
+      archive: { id: a.id, createdAt: a.created_at, ownerType: a.owner_type },
+      file: sbBuildFile(owner, a.owner_type, sbData(r[1]) || [], a.ratings || [], a.links || [], false),
+      profile: { owner: { id: owner.id, name: owner.name, username: owner.username, role: owner.role }, editable: false, profile: profile, images: {}, sentAt: null }
+    };
+  });
+};
+
+/** يؤرشف الملف الحالي ويغيّر الصفة (مسؤول النظام). */
+API.archiveFile = function (_t, targetId, newType) {
+  return sb.rpc('archive_file', { target: targetId, new_type: newType || null }).then(function (r) {
+    return sbData(r, 'تعذّرت أرشفة الملف.');
+  });
+};
+
+/** يحذف ملفًا سابقًا وملفات شواهده من التخزين (مسؤول النظام). */
+API.deleteArchive = function (_t, archiveId) {
+  return sb.from('evidence').select('file_path').eq('archive_id', archiveId).then(function (r) {
+    var paths = (sbData(r, 'تعذّر حذف الملف السابق.') || []).map(function (x) { return x.file_path; });
+    var chunks = [];
+    for (var i = 0; i < paths.length; i += 100) chunks.push(paths.slice(i, i + 100));
+    return Promise.all(chunks.map(function (c) { return sb.storage.from('evidence').remove(c); }));
+  }).then(function () {
+    return sb.from('archives').delete().eq('id', archiveId).select('id');
+  }).then(function (r) {
+    if (!sbData(r, 'تعذّر حذف الملف السابق.').length) throw new Error('لا تملك صلاحية حذف هذا الملف.');
+    return true;
   });
 };
 

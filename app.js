@@ -306,6 +306,8 @@ function renderNav() {
 /** التنقل الرئيسي. id اختياري لفتح ملف معلم محدد. */
 function go(view, id) {
   if (view === 'submit') return submitPrincipal();
+  S.archiveId = view === 'preview' ? (S.pendingArchive || null) : null;
+  S.pendingArchive = null;
   S.view = view;
   if (main()) main().innerHTML = '<div class="notice" aria-live="polite">جارٍ التحميل…</div>';
   if (view === 'teachers') { S.inFile = false; renderNav(); return loadTeachers(); }
@@ -694,8 +696,84 @@ function renderProfile() {
         '<p class="muted" style="margin:0">يظهران في معاينة ملفك وطباعته، وفي ملفات المعلمين المسندين إليك عند معاينتها من حسابك أو من حساب مسؤول النظام، ولا يظهران للمعلم. ومدرستك المحددة أعلاه: من يختارها من المعلمين يُكتب اسمك مديرًا له تلقائيًا.</p></section>'
       : '<section class="card"><h3>التوقيع</h3><div class="img-grid">' + imgs + '</div>' +
         '<p class="muted" style="margin:0">توقيعك يضيفه أنت أو مسؤول النظام، ويظهر في معاينة الملف وطباعته. توقيع المدير والختم يضيفهما المدير في ملفه أو مسؤول النظام.</p></section>') +
-    submit;
+    submit + '<div id="archives-card"></div>';
   applySchool(main().querySelector('form[data-action="profile"]'));
+  loadArchivesCard();
+}
+
+/** يحفظ بيانات الملف ثم يعيد عرضها. */
+function saveProfileData(data) {
+  return call('saveProfile', [S.token, data, S.targetId]).then(function () {
+    toast('تم حفظ بيانات الملف.');
+    return loadProfileView();
+  }).catch(handleErr);
+}
+
+/**
+ * مسؤول النظام يغيّر الصفة (مثل ترقية معلم إلى وكيل): إن كان في الملف شواهد أو تقديرات أو روابط
+ * يُعرض خيار حفظه في «ملفات سابقة» وبدء ملف جديد بعناصر الصفة الجديدة.
+ */
+function askTypeChange(data, oldType) {
+  return call('getFile', [S.token, S.targetId]).then(function (f) {
+    var evs = f.summary.evidenceTotal;
+    var used = evs || f.elements.some(function (el) { return el.rating || el.link; });
+    if (!used) return saveProfileData(data);
+    S.pendingProfile = data;
+    openModal('<h2>تغيير الصفة من «' + esc(oldType) + '» إلى «' + esc(data.ownerType) + '»</h2>' +
+      '<p>في الملف الحالي ' + d(evs) + ' شاهد. عناصر الصفة الجديدة تختلف، فالشواهد المحفوظة برقم العنصر قد تظهر تحت عناصر لا تخصها.</p>' +
+      '<div class="choice"><button class="btn primary" type="button" data-act="type-archive">حفظ الملف في «ملفات سابقة» وبدء ملف جديد</button>' +
+      '<span class="muted">يُحفظ الملف الحالي بشواهده وتقديراته وروابطه للعرض والطباعة، ويبدأ ملف فارغ بعناصر «' + esc(data.ownerType) + '».</span></div>' +
+      '<div class="choice"><button class="btn" type="button" data-act="type-only">تغيير الصفة فقط</button>' +
+      '<span class="muted">تبقى الشواهد في الملف الحالي بأرقام عناصرها.</span></div>' +
+      '<div class="form-actions"><button class="btn" type="button" data-act="close">إلغاء</button></div>');
+    // الإلغاء يعيد عرض البيانات المحفوظة (لا تبقى الصفة المختارة في النموذج بلا حفظ).
+    S.onCancel = function () { S.pendingProfile = null; loadProfileView(); };
+  }).catch(handleErr);
+}
+
+function applyTypeChange(archive, btn) {
+  var data = S.pendingProfile;
+  if (!data) return closeModal();
+  S.pendingProfile = null;
+  if (btn) { btn.disabled = true; btn.textContent = 'جارٍ الحفظ…'; }
+  var first = archive ? call('archiveFile', [S.token, S.targetId, data.ownerType]) : Promise.resolve();
+  return first.then(function () {
+    closeModal();
+    if (archive) toast('حُفظ الملف السابق، وبدأ ملف جديد.');
+    S.cache.ev = {};
+    return saveProfileData(data);
+  }).catch(function (err) { closeModal(); handleErr(err); });
+}
+
+/** بطاقة «ملفات سابقة» في بيانات الملف (تظهر إن وُجدت). */
+function loadArchivesCard() {
+  var box = document.getElementById('archives-card');
+  if (!box) return;
+  call('listArchives', [S.token, S.targetId]).then(function (list) {
+    if (!list.length) return;
+    var admin = S.me.role === 'admin';
+    box.innerHTML = '<section class="card"><h3>ملفات سابقة</h3>' +
+      '<p class="muted" style="margin:0">ملفات حُفظت عند تغيير الصفة، للعرض والطباعة فقط.</p>' +
+      '<ul class="arch-list">' + list.map(function (a) {
+        var when = [a.term, a.year ? d(a.year) + 'هـ' : ''].filter(Boolean).join(' · ');
+        return '<li><span><strong>' + esc(a.ownerType) + '</strong>' + (when ? ' — ' + esc(when) : '') +
+          '<br><span class="muted">' + d(a.evidenceCount) + ' شاهد · حُفظ في ' + esc(fmtDate(a.createdAt)) + '</span></span>' +
+          '<span class="arch-btns"><button class="btn small" type="button" data-act="arch-view" data-id="' + esc(a.id) + '">معاينة وطباعة</button>' +
+          (admin ? '<button class="btn small danger" type="button" data-act="arch-del" data-id="' + esc(a.id) + '">حذف</button>' : '') + '</span></li>';
+      }).join('') + '</ul></section>';
+  }).catch(function () {});
+}
+
+function deleteArchive(id) {
+  askConfirm('حذف هذا الملف السابق نهائيًا بشواهده وملفاتها؟ لا يمكن التراجع.', 'حذف نهائي', function () {
+    var btn = document.querySelector('#modal [data-act="confirm-yes"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'جارٍ الحذف…'; }
+    return call('deleteArchive', [S.token, id]).then(function () {
+      closeModal();
+      toast('حُذف الملف السابق.');
+      return loadProfileView();
+    }).catch(function (err) { closeModal(); handleErr(err); });
+  }, true);
 }
 
 /** بعد رفع صورة أو رسم توقيع: تحديث الشاشة التي جاء منها (الحسابات أو بيانات الملف). */
@@ -882,13 +960,19 @@ function pdfPages(id, base64) {
 }
 
 function loadPreview() {
-  return Promise.all([
-    call('getFile', [S.token, S.targetId]),
-    call('getProfile', [S.token, S.targetId]),
+  var arch = S.archiveId;
+  var fileAndProfile = arch
+    ? call('getArchiveFile', [S.token, arch]).then(function (x) { S.archiveInfo = x.archive; return [x.file, x.profile]; })
+    : Promise.all([call('getFile', [S.token, S.targetId]), call('getProfile', [S.token, S.targetId])]);
+  return fileAndProfile.then(function (fp) {
+    return Promise.all([
+    fp[0],
+    fp[1],
     cached('img', S.targetId + ':ownerSig', 'getProfileImage', [S.token, S.targetId, 'ownerSig']),
     // توقيع المدير وختمه: لمسؤول النظام والمدير فقط، ولا يُطلبان أصلًا في حساب المعلم.
     S.me.role === 'teacher' ? Promise.resolve({}) : call('getPrincipalImages', [S.token, S.targetId]).catch(function () { return {}; })
-  ]).then(function (r) {
+  ]);
+  }).then(function (r) {
     // ملف المدير نفسه: مسؤوله المباشر خارج المدرسة، فلا ختم ولا توقيع مدير مدرسة.
     if (r[1].owner.role === 'principal') r[3] = {};
     var src = function (x) { return x ? 'data:' + x.mime + ';base64,' + x.base64 : ''; };
@@ -912,8 +996,10 @@ function loadPreview() {
     });
     return Promise.all([loadQrFor(r[0].elements, imgs), Promise.all(jobs)]).then(function () {
       main().innerHTML =
-        '<div class="page-head no-print"><h2>معاينة الملف للطباعة</h2>' +
-        '<button class="btn primary" type="button" data-act="print">طباعة / حفظ PDF</button></div>' +
+        '<div class="page-head no-print"><h2>' + (arch ? 'ملف سابق: ' + esc(S.archiveInfo.ownerType) : 'معاينة الملف للطباعة') + '</h2>' +
+        '<span class="head-btns">' + (arch ? '<button class="btn" type="button" data-act="tab" data-view="profile">رجوع إلى بيانات الملف</button>' : '') +
+        '<button class="btn primary" type="button" data-act="print">طباعة / حفظ PDF</button></span></div>' +
+        (arch ? '<div class="notice no-print">هذا ملف سابق حُفظ في ' + esc(fmtDate(S.archiveInfo.createdAt)) + ' عند تغيير الصفة، ويُعرض للقراءة والطباعة فقط.</div>' : '') +
         '<div class="notice no-print">تُعرض الصفحة بالهوية البصرية للمدرسة، ومعها الشواهد. الصور تظهر كاملة، وصفحات ملفات PDF تظهر كصور (حتى ٢٠ صفحة لكل ملف). ملفات Word وExcel يُذكر اسمها فقط.</div>' +
         docHTML(r[0], r[1], imgs);
       return paginateDoc(document.getElementById('print-area'));
@@ -1868,6 +1954,10 @@ document.addEventListener('click', function (e) {
   if (a === 'note') return openNote(t.dataset.id, t.dataset.name);
   if (a === 'restore-apply') return applyRestore();
   if (a === 'archive') return downloadMyArchive(t);
+  if (a === 'type-archive') return applyTypeChange(true, t);
+  if (a === 'type-only') return applyTypeChange(false, t);
+  if (a === 'arch-view') { S.pendingArchive = t.dataset.id; return go('preview', S.targetId); }
+  if (a === 'arch-del') return deleteArchive(t.dataset.id);
   if (a === 'zip-apply') return applyZipPlan(t);
   if (a === 'wipe') return openWipe();
   if (a === 'restore-csv') return downloadRestorePasswords();
@@ -2044,10 +2134,9 @@ document.addEventListener('submit', function (e) {
     // اسم المدير من الدليل إن كانت المدرسة مسجلة (ولو عُدّل الحقل بطريقة ما).
     var entry = !only && form.dataset.owner !== 'principal' && schoolEntry(data.school);
     if (entry) data.principalName = entry.principalName;
-    return call('saveProfile', [S.token, data, S.targetId]).then(function () {
-      toast('تم حفظ بيانات الملف.');
-      return loadProfileView();
-    }).catch(handleErr);
+    var oldType = S.profile.profile.ownerType;
+    if (S.me.role === 'admin' && data.ownerType && oldType && data.ownerType !== oldType) return askTypeChange(data, oldType);
+    return saveProfileData(data);
   }
 
   if (action === 'zip-read') {

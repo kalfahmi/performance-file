@@ -6,7 +6,7 @@
  *  - الشواهد والتوقيعات: تُعاد سجلاتها فقط إن كان ملفها ما زال في التخزين (النسخة لا تحوي الملفات نفسها).
  * يعتمد على sb وsbData وsbFunction وAPI.exportBackup في api.js. */
 
-var RESTORE_TABLES = ['users', 'profiles', 'evidence', 'ratings', 'links', 'access', 'submissions', 'messages', 'grades'];
+var RESTORE_TABLES = ['users', 'profiles', 'archives', 'evidence', 'ratings', 'links', 'access', 'submissions', 'messages', 'grades'];
 var RESTORE_PROFILE_TEXT = ['owner_type', 'owner_name', 'stage', 'subject', 'school', 'principal_name', 'reviewer_title', 'edu_office', 'job_no', 'year', 'term', 'message'];
 var RESTORE_PROFILE_IMAGES = ['owner_sig_path', 'principal_sig_path', 'stamp_path'];
 
@@ -18,6 +18,7 @@ function restoreTempPassword() {
 
 /** مفاتيح كل جدول لمعرفة السجل الموجود (بعد تحويل المعرّفات). */
 var RESTORE_KEYS = {
+  archives: function (r) { return r.id; },
   evidence: function (r) { return r.id; },
   ratings: function (r) { return r.user_id + ':' + r.element; },
   links: function (r) { return r.user_id + ':' + r.element; },
@@ -28,13 +29,13 @@ var RESTORE_KEYS = {
 };
 /** أعمدة المعرّفات التي تشير إلى حسابات في كل جدول. */
 var RESTORE_USER_COLS = {
-  evidence: ['user_id'], ratings: ['user_id'], links: ['user_id'], access: ['principal_id', 'teacher_id'],
+  archives: ['user_id'], evidence: ['user_id'], ratings: ['user_id'], links: ['user_id'], access: ['principal_id', 'teacher_id'],
   submissions: ['user_id'], messages: ['from_id', 'to_id'], grades: ['teacher_id', 'principal_id']
 };
 /** أعمدة حسابات يجوز أن تكون فارغة: المدير المحذوف تبقى رسائله ودرجاته بلا اسمه. */
 var RESTORE_NULLABLE = { messages: { from_id: true }, grades: { principal_id: true } };
 var RESTORE_LABELS = {
-  users: 'الحسابات', profiles: 'بيانات الملفات', evidence: 'الشواهد', ratings: 'التقديرات الذاتية', links: 'روابط المجلدات',
+  users: 'الحسابات', profiles: 'بيانات الملفات', archives: 'الملفات السابقة', evidence: 'الشواهد', ratings: 'التقديرات الذاتية', links: 'روابط المجلدات',
   access: 'إسناد المعلمين', submissions: 'إرسال الملفات', messages: 'رسائل المدير', grades: 'الدرجات'
 };
 
@@ -185,7 +186,7 @@ API.restoreApply = function (_t, plan, onStep) {
     });
   }).then(function (evidenceFiles) {
     // ٣) بقية الجداول بالترتيب: ما يعتمد على الحسابات فقط.
-    return ['evidence', 'ratings', 'links', 'access', 'submissions', 'grades', 'messages'].reduce(function (p, t) {
+    return ['archives', 'evidence', 'ratings', 'links', 'access', 'submissions', 'grades', 'messages'].reduce(function (p, t) {
       return p.then(function () {
         step('استعادة ' + RESTORE_LABELS[t] + '…');
         return sb.from(t).select('*').then(function (r) {
