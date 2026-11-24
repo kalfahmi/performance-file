@@ -700,7 +700,7 @@ function docHTML(f, p, imgs) {
     kv += '<tr><th>' + esc(info[i][0]) + '</th><td>' + esc(info[i][1]) + '</td><th>' + esc(info[i + 1][0]) + '</th><td>' + esc(info[i + 1][1]) + '</td></tr>';
   }
   return '<div class="doc-wrap"><article class="doc" id="print-area">' +
-    '<header class="doc-head" style="background-image:url(assets/header.png)"><div class="doc-head-text"><strong>' + esc(EDU) + '</strong><span>' + esc(SCHOOL) + '</span></div></header>' +
+    '<header class="doc-head" style="background-image:url(assets/header.png)"><div class="doc-head-text"><strong>' + esc(EDU) + '</strong></div><div class="doc-head-tab">' + esc(SCHOOL) + '</div></header>' +
     '<div class="doc-title">' +
     '<div><h1>ملف الأداء الوظيفي</h1><p>' + esc(pr.ownerName) + ' · ' + esc(pr.term) + ' · ' + esc(pr.year) + '</p></div></div>' +
     '<section class="doc-sec"><h3>بيانات الملف</h3><table class="kv">' + kv + '</table></section>' +

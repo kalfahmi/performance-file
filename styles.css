@@ -121,9 +121,11 @@ select:disabled, input:disabled, textarea:disabled { background: var(--soft); co
 /* ---------- معاينة الطباعة (الهوية البصرية للمدرسة) ---------- */
 .doc-wrap { display: flex; justify-content: center; overflow-x: auto; padding: 8px 0 24px; }
 .doc { width: 210mm; max-width: 100%; min-height: 297mm; background: #fff; box-shadow: 0 2px 18px rgba(23,43,57,.12); display: flex; flex-direction: column; color: #192C3A; }
-.doc-head { position: relative; width: 100%; aspect-ratio: 1696 / 418; background-size: 100% 100%; background-repeat: no-repeat; }
-.doc-head-text { position: absolute; top: 26%; left: 5%; right: auto; max-width: 46%; text-align: right; color: #fff; display: flex; flex-direction: column; gap: 4px; font-size: clamp(11px, 2.4vw, 15px); }
-.doc-head-text strong { font-size: clamp(13px, 2.8vw, 18px); }
+.doc-head { position: relative; width: 100%; aspect-ratio: 1696 / 418; background-size: 100% 100%; background-repeat: no-repeat; container-type: inline-size; }
+.doc-head-text { position: absolute; top: 30%; left: 5%; max-width: 40%; text-align: right; color: #fff; font-size: 13px; font-size: 2.3cqw; line-height: 1.4; }
+.doc-head-text strong { font-weight: 700; }
+/* اسم المدرسة داخل اللسان السفلي في صورة الترويسة (من ٤٤٨ إلى ١٢٥٠ أفقيًا، ومن ٣١٢ إلى ٤١٥ رأسيًا) */
+.doc-head-tab { position: absolute; left: 26.4%; right: 26.3%; top: 74.6%; bottom: 0.7%; display: flex; align-items: center; justify-content: center; text-align: center; color: #fff; font-weight: 700; font-size: 15px; font-size: 2.6cqw; line-height: 1.2; padding: 0 2%; overflow: hidden; }
 .doc-title { display: block; padding: 16px 28px 6px; text-align: center; }
 .doc-title h1 { font-size: 24px; color: var(--navy); }
 .doc-title p { margin: 0; color: var(--muted); font-size: 14px; }
