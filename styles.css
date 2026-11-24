@@ -172,3 +172,9 @@ table.dt thead th { background: var(--navy); color: #fff; font-weight: 600; }
 .ev-meta { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
 .ev-img { width: 100%; height: auto; display: block; border-radius: 8px; border: 1px solid #E3EAEE; }
 .ev-file { background: var(--soft); padding: 8px 10px; border-radius: 8px; font-size: 13px; }
+.ev-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.ev-grid.multi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ev-grid .ev-img { aspect-ratio: 4 / 3; object-fit: cover; }
+.ev-grid:not(.multi) .ev-img { aspect-ratio: 16 / 9; }
+.ev-grid .ev-card { min-width: 0; }
+@media (max-width: 720px) { .ev-grid.multi { grid-template-columns: 1fr; } }

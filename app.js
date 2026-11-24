@@ -558,14 +558,17 @@ function docHTML(f, p, imgs) {
 
 function evidenceHTML(f, imgs) {
   return f.elements.map(function (el) {
-    var items = el.evidence.map(function (x) {
+    var cards = el.evidence.map(function (x) {
       var src = imgs['ev:' + x.id];
       var body = src
         ? '<img class="ev-img" src="' + src + '" alt="' + esc(x.title) + '">'
         : '<div class="ev-file">مرفق: ' + esc(x.fileName) + ' (' + fmtSize(x.size) + ')</div>';
       return '<div class="ev-card"><div class="ev-meta"><strong>' + esc(x.title) + '</strong>' +
         '<span class="muted">' + esc(x.fileName) + ' · ' + fmtDate(x.uploadedAt) + '</span></div>' + body + '</div>';
-    }).join('');
+    });
+    var items = cards.length
+      ? '<div class="ev-grid' + (cards.length > 1 ? ' multi' : '') + '">' + cards.join('') + '</div>'
+      : '';
     return '<div class="doc-el"><div class="doc-el-head"><span class="doc-el-no">' + d(el.no) + '</span>' +
       '<h4>' + esc(el.name) + '</h4><span class="muted">الوزن ' + d(el.weight) + '٪</span></div>' +
       (items || '<p class="doc-none">لا توجد شواهد لهذا العنصر.</p>') + '</div>';
