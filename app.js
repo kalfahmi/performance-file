@@ -18,10 +18,9 @@ var MIME = {
 var OWNER_TYPES = ['معلم', 'وكيل مدرسة', 'موجه طلابي', 'مدير مدرسة'];
 var TERMS = ['الفصل الدراسي الأول', 'الفصل الدراسي الثاني'];
 var PROFILE_IMAGES = [
-  { key: 'rightLogo', label: 'شعار الغلاف الأيمن', sign: false },
-  { key: 'leftLogo', label: 'شعار الغلاف الأيسر', sign: false },
-  { key: 'ownerSig', label: 'توقيع صاحب الملف', sign: true },
-  { key: 'principalSig', label: 'توقيع مدير المدرسة', sign: true }
+  { key: 'ownerSig', label: 'توقيع صاحب الملف', sign: true, admin: false },
+  { key: 'principalSig', label: 'توقيع مدير المدرسة', sign: true, admin: true },
+  { key: 'stamp', label: 'ختم المدرسة', sign: false, admin: true }
 ];
 var GENERAL_IDEAS = ['سجل الدوام', 'جدول الحصص والانتظار', 'سجل المناوبة', 'محضر لجنة مدرسية', 'خطاب تقدير', 'سجل متابعة منصة مدرستي'];
 var EVIDENCE_IDEAS = {
@@ -147,8 +146,9 @@ function boot() {
   S.token = sessionStorage.getItem('ptoken');
   if (!S.token) return showLoginOrSetup();
   document.getElementById('app').innerHTML = '<div class="notice">جارٍ التحميل…</div>';
-  return call('whoami', [S.token]).then(function (me) {
-    S.me = me;
+  return call('resume', [S.token]).then(function (r) {
+    S.me = r.user;
+    S.prefetch = r.file;
     enter();
   }).catch(function () {
     sessionStorage.removeItem('ptoken');
@@ -255,6 +255,12 @@ function go(view, id) {
 /* ---------- عناصر الأداء ---------- */
 
 function loadElements() {
+  if (S.prefetch && S.targetId === S.me.id) {
+    S.file = S.prefetch;
+    S.prefetch = null;
+    renderElements();
+    return Promise.resolve();
+  }
   return call('getFile', [S.token, S.targetId]).then(function (f) {
     S.file = f;
     renderElements();
@@ -318,7 +324,7 @@ function openElement(no) {
   var linkBox = mine
     ? '<div class="section-box"><h3>رابط مجلد الشواهد (اختياري)</h3><form class="row" data-action="link" data-element="' + no + '">' +
       '<label>رابط مجلد Google Drive<input name="url" type="url" maxlength="300" value="' + esc(el.link || '') + '" placeholder="https://drive.google.com/..."></label>' +
-      '<button class="btn primary" type="submit">حفظ الرابط</button></form>' +
+      '<button class="btn primary" type="submit">حفظ الرابط</button>' + (el.link ? '<button class="btn small danger" type="button" data-act="clear-link" data-element="' + no + '">حذف الرابط</button>' : '') + '</form>' +
       '<p class="muted" style="margin:0">يظهر في الملف المطبوع رمز QR يفتح الشواهد كاملة. اترك الحقل فارغًا لإزالته.</p></div>'
     : (el.link ? '<div class="section-box"><h3>مجلد الشواهد</h3><a href="' + esc(el.link) + '" target="_blank" rel="noopener">فتح مجلد الشواهد</a></div>' : '');
   openModal('<div class="modal-head"><div><span class="muted">العنصر ' + d(no) + ' · الوزن ' + d(el.weight) + '٪</span><h2>' + esc(el.name) + '</h2></div>' +
@@ -413,12 +419,14 @@ function loadProfileView() {
   return call('getProfile', [S.token, S.targetId]).then(function (p) {
     S.profile = p;
     renderProfile();
+    loadThumbs();
   }).catch(handleErr);
 }
 
 function renderProfile() {
   var p = S.profile, pr = p.profile, can = p.editable;
   var dis = can ? '' : ' disabled';
+  var canImg = function (im) { return im.admin ? S.me.role === 'admin' : can; };
   var fields = PROFILE_FIELDS.map(function (f) {
     var val = esc(pr[f.key]);
     var input = f.select
@@ -433,19 +441,28 @@ function renderProfile() {
     (can ? '<div class="form-actions"><button class="btn primary" type="submit">حفظ بيانات الملف</button></div>' : '') + '</form>';
   var imgs = PROFILE_IMAGES.map(function (im) {
     var has = p.images[im.key];
-    var actions = can
+    var actions = canImg(im)
       ? '<button class="btn small" type="button" data-act="pick-img" data-slot="' + im.key + '">رفع صورة</button>' +
         (im.sign ? '<button class="btn small" type="button" data-act="sign" data-slot="' + im.key + '">رسم توقيع</button>' : '')
       : '';
     return '<div class="img-card"><span class="img-name">' + esc(im.label) + '</span>' +
-      '<span class="muted">' + (has ? 'تم الرفع' : 'لم يُرفع بعد') + '</span>' +
+      (has ? '<img class="img-thumb" data-thumb="' + im.key + '" alt="' + esc(im.label) + '">' : '<span class="muted">لم يُرفع بعد</span>') +
       '<div class="img-actions">' + actions + '</div></div>';
   }).join('');
+  var submit = (can && S.me.role === 'teacher')
+    ? '<section class="card"><h3>إرسال الملف إلى المدير</h3>' +
+      '<p class="muted" style="margin:0">' + (p.sentAt
+        ? 'أُرسل الملف إلى المدير في ' + esc(fmtDate(p.sentAt)) + '. يمكنك إعادة الإرسال بعد أي تعديل.'
+        : 'لن يظهر ملفك لحساب المدير قبل أن ترسله.') + '</p>' +
+      '<div class="form-actions"><button class="btn primary" type="button" data-act="submit-principal">' +
+      (p.sentAt ? 'إعادة الإرسال إلى المدير' : 'إرسال الملف إلى المدير') + '</button></div></section>'
+    : '';
   main().innerHTML =
     '<div class="page-head"><h2>' + esc(can ? 'بيانات الملف' : 'بيانات ملف ' + p.owner.name) + '</h2></div>' +
     '<section class="card"><h3>المعلومات الأساسية</h3>' + form + '</section>' +
-    '<section class="card"><h3>الشعارات والتوقيعات</h3><div class="img-grid">' + imgs + '</div>' +
-    '<p class="muted" style="margin:0">تظهر هذه الشعارات والتوقيعات في معاينة الملف للطباعة. الحد الأقصى ١ ميغابايت للصورة، والصيغ: PNG وJPEG وWebP.</p></section>';
+    '<section class="card"><h3>التواقيع والختم</h3><div class="img-grid">' + imgs + '</div>' +
+    '<p class="muted" style="margin:0">توقيع صاحب الملف يضيفه المعلم، أما توقيع المدير والختم فيضيفهما مسؤول النظام ولا يمكن تغييرهما من غيره. تظهر في معاينة الملف للطباعة.</p></section>' +
+    submit;
 }
 
 function pickImage(slot) {
@@ -457,7 +474,7 @@ function pickImage(slot) {
     if (!file) return;
     if (file.size > MAX_IMG_BYTES) return toast('حجم الصورة أكبر من ١ ميغابايت.', 'err');
     readBase64(file).then(function (b64) {
-      return call('uploadProfileImage', [S.token, slot, file.type, b64]);
+      return call('uploadProfileImage', [S.token, S.targetId, slot, file.type, b64]);
     }).then(function () {
       S.cache.img = {};
       toast('تم رفع الصورة.');
@@ -511,7 +528,7 @@ function saveSignature(slot) {
   var c = S.sig;
   if (!c) return;
   var b64 = c.toDataURL('image/png').split(',')[1];
-  return call('uploadProfileImage', [S.token, slot, 'image/png', b64]).then(function () {
+  return call('uploadProfileImage', [S.token, S.targetId, slot, 'image/png', b64]).then(function () {
     S.cache.img = {};
     toast('تم حفظ التوقيع.');
     closeModal();
@@ -520,6 +537,35 @@ function saveSignature(slot) {
 }
 
 /* ---------- معاينة الملف للطباعة ---------- */
+
+/* ---------- إجراءات الملف ---------- */
+
+function clearLink(no) {
+  if (!confirm('حذف رابط مجلد الشواهد لهذا العنصر؟')) return;
+  return call('setElementLink', [S.token, no, '']).then(function () {
+    toast('تم حذف الرابط.');
+    closeModal();
+    return loadElements();
+  }).catch(handleErr);
+}
+
+function submitPrincipal() {
+  if (!confirm('إرسال الملف إلى المدير؟ يظهر الملف لحساب المدير بعد الإرسال.')) return;
+  return call('submitToPrincipal', [S.token]).then(function () {
+    toast('تم إرسال الملف إلى المدير.');
+    return loadProfileView();
+  }).catch(handleErr);
+}
+
+/** يعرض صور التواقيع والختم الموجودة في بطاقاتها. */
+function loadThumbs() {
+  document.querySelectorAll('[data-thumb]').forEach(function (img) {
+    var key = img.dataset.thumb;
+    cached('img', S.targetId + ':' + key, 'getProfileImage', [S.token, S.targetId, key]).then(function (r) {
+      if (r) img.src = 'data:' + r.mime + ';base64,' + r.base64;
+    }).catch(function () {});
+  });
+}
 
 /* ---------- تحميل مع ذاكرة مؤقتة للجلسة ---------- */
 
@@ -643,12 +689,10 @@ function docHTML(f, p, imgs) {
   for (var i = 0; i < info.length; i += 2) {
     kv += '<tr><th>' + esc(info[i][0]) + '</th><td>' + esc(info[i][1]) + '</td><th>' + esc(info[i + 1][0]) + '</th><td>' + esc(info[i + 1][1]) + '</td></tr>';
   }
-  var logo = function (src) { return src ? '<img src="' + src + '" alt="">' : ''; };
   return '<div class="doc-wrap"><article class="doc" id="print-area">' +
     '<header class="doc-head" style="background-image:url(assets/header.png)"><div class="doc-head-text"><strong>' + esc(EDU) + '</strong><span>' + esc(SCHOOL) + '</span></div></header>' +
-    '<div class="doc-title"><div class="doc-logo">' + logo(imgs.rightLogo) + '</div>' +
-    '<div><h1>ملف الأداء الوظيفي</h1><p>' + esc(pr.ownerName) + ' · ' + esc(pr.term) + ' · ' + esc(pr.year) + '</p></div>' +
-    '<div class="doc-logo">' + logo(imgs.leftLogo) + '</div></div>' +
+    '<div class="doc-title">' +
+    '<div><h1>ملف الأداء الوظيفي</h1><p>' + esc(pr.ownerName) + ' · ' + esc(pr.term) + ' · ' + esc(pr.year) + '</p></div></div>' +
     '<section class="doc-sec"><h3>بيانات الملف</h3><table class="kv">' + kv + '</table></section>' +
     '<section class="doc-sec"><h3>ملخص الأداء</h3><table class="kv"><tr><th>جاهزية الشواهد</th><td>' + pct(s.readiness) +
     '</td><th>عناصر مكتملة</th><td>' + d(complete) + ' / ' + d(11) + '</td></tr><tr><th>الشواهد المضافة</th><td>' + d(s.evidenceTotal) +
@@ -657,7 +701,7 @@ function docHTML(f, p, imgs) {
     '<section class="doc-sec doc-ev-sec"><h3>الشواهد</h3>' + evidenceHTML(f, imgs) + '</section>' +
     (pr.message ? '<section class="doc-sec"><h3>رسالة المعلم</h3><p class="doc-msg">' + esc(pr.message) + '</p></section>' : '') +
     '<section class="doc-sign"><div><span class="muted">توقيع صاحب الملف</span>' + (imgs.ownerSig ? '<img src="' + imgs.ownerSig + '" alt="">' : '<div class="sig-empty"></div>') + '<strong>' + esc(pr.ownerName) + '</strong></div>' +
-    '<div><span class="muted">توقيع مدير المدرسة</span>' + (imgs.principalSig ? '<img src="' + imgs.principalSig + '" alt="">' : '<div class="sig-empty"></div>') + '<strong>' + esc(pr.principalName) + '</strong></div></section>' +
+    '<div><span class="muted">توقيع مدير المدرسة والختم</span><div class="doc-sig-row">' + (imgs.principalSig ? '<img src="' + imgs.principalSig + '" alt="">' : '<div class="sig-empty"></div>') + (imgs.stamp ? '<img class="doc-stamp" src="' + imgs.stamp + '" alt="">' : '') + '</div><strong>' + esc(pr.principalName) + '</strong></div></section>' +
     '<footer class="doc-foot" style="background-image:url(assets/footer.png)"></footer>' +
     '</article></div>';
 }
@@ -846,6 +890,7 @@ function logout() {
   sessionStorage.removeItem('ptoken');
   S.token = null;
   S.me = null;
+  S.prefetch = null;
   S.cache = { img: {}, ev: {}, pdf: {} };
   call('logout', [token]).catch(function () {}).then(renderLogin);
 }
@@ -872,6 +917,8 @@ document.addEventListener('click', function (e) {
   if (a === 'view') return viewEvidence(t.dataset.id);
   if (a === 'del') return deleteEvidence(t.dataset.id);
   if (a === 'edit-ev') return openEvidenceEdit(t.dataset.id);
+  if (a === 'clear-link') return clearLink(Number(t.dataset.element));
+  if (a === 'submit-principal') return submitPrincipal();
   if (a === 'reset') return openResetModal(t.dataset.id, t.dataset.name);
   if (a === 'backup') return downloadBackup();
   if (a === 'assign') return openAssign(t.dataset.id);
@@ -932,6 +979,7 @@ document.addEventListener('submit', function (e) {
     return call('login', [val('username'), raw('password')]).then(function (r) {
       S.token = r.token;
       S.me = r.user;
+      S.prefetch = r.file;
       sessionStorage.setItem('ptoken', r.token);
       enter();
     }).catch(function (err) {
