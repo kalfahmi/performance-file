@@ -925,13 +925,13 @@ function loadPdfJs() {
 
 function renderPdfPages(base64) {
   var bytes = Uint8Array.from(atob(base64), function (c) { return c.charCodeAt(0); });
-  return window.pdfjsLib.getDocument({ data: bytes }).promise.then(function (pdf) {
+  return window.pdfjsLib.getDocument({ data: bytes, disableFontFace: true }).promise.then(function (pdf) {
     var last = Math.min(pdf.numPages, PDF_MAX_PAGES);
     var out = [];
     var next = function (i) {
       if (i > last) return Promise.resolve({ pages: out, total: pdf.numPages });
       return pdf.getPage(i).then(function (page) {
-        var vp = page.getViewport({ scale: 1.3 });
+        var vp = page.getViewport({ scale: 1.6 });
         var cv = document.createElement('canvas');
         cv.width = Math.floor(vp.width);
         cv.height = Math.floor(vp.height);
